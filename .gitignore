@@ -1,0 +1,23 @@
+# Node.js
+**/node_modules/
+**/dist/
+**/build/
+**/.angular/
+**/babel-webpack/
+
+# .NET
+**/bin/
+**/obj/
+**/*.user
+**/.vs/
+
+# OS
+*.DS_Store
+desktop.ini
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
