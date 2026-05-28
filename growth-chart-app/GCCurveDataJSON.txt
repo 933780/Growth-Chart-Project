@@ -1,6 +1,4 @@
-PS C:\Users\INTERN 03\Desktop\Growth-Chart-Project> git status
-fatal: 'growth-chart-app/.git' not recognized as a git repository
-PS C:\Users\INTERN 03\Desktop\Growth-Chart-Project> {
+{
     "OLSEN_LENGTH": {
         "name": "OLSEN_LENGTH",
         "measurement": "metric",
