@@ -62,11 +62,11 @@ window.GC = window.GC || {};
         isParentTabShown : true,
         hidePatientHeader: true,
         hideAppPreferences: false,
-        hideGCComparison: false,
+        hideGCComparison: true,
         hideAddData: false,
         defaultChart : "WHO", // 2+ years
         defaultBabyChart : "WHO", // 0 - 2 years
-        defaultPrematureChart : "FENTON", // premature
+        defaultPrematureChart : "WHO", // premature
 
         widthType  : "auto",// or "fixed"
         paperWidth : 1200,
