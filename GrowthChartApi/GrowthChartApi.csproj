@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <PackageReference Include="Hl7.Fhir.R4" Version="5.2.1" />
+    <PackageReference Include="Npgsql"       Version="8.0.3" />
   </ItemGroup>
 
 </Project>
