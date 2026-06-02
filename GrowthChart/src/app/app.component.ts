@@ -45,7 +45,7 @@ export class AppComponent {
     const uhid = this.uhid.trim();
     if (!uhid) return;
 
-    fetch(`${environment.apiUrl}/api/patients/search?uhid=${encodeURIComponent(uhid)}`)
+    fetch(`${environment.apiUrl}/api/patients/search?opnumber=${encodeURIComponent(uhid)}`)
       .then(r => {
         if (!r.ok) throw new Error(`Server error ${r.status}`);
         return r.json();
@@ -62,7 +62,7 @@ export class AppComponent {
           this.lookupMessage = 'Patient found — press "Open Growth Chart" to continue.';
         } else {
           this.patient       = null;
-          this.lookupMessage = 'No patient found for this UHID.';
+          this.lookupMessage = 'No patient found for this OPID.';
         }
       })
       .catch((err: Error) => {

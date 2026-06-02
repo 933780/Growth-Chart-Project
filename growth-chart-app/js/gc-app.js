@@ -16,8 +16,8 @@
         // BIRTH_XDATE = new XDate(),
         MIN_WEEK_DIFF = NS.chartSettings.minTimeInterval / NS.Constants.TIME.WEEK,
         BROADCASTER = $("html"),
-        PRIMARY_CHART_TYPE = "CDC",
-        CORRECTION_CHART_TYPE = "CDC", // CDC, WHO etc.
+        PRIMARY_CHART_TYPE = "WHO", // CDC, WHO etc.
+        CORRECTION_CHART_TYPE = "WHO", // CDC, WHO etc.
         START_WEEK = 0,
         END_WEEK = 26.08928571428572,
         START_AGE_MOS = null,
@@ -778,11 +778,15 @@
         }
 
         function render(done) {
-            GC.App.setViewType(GC.chartSettings.initialView);
+            // Small delay to avoid Raphael race condition where SVG renders
+            // before the container has finished sizing
+            setTimeout(function() {
+                GC.App.setViewType(GC.chartSettings.initialView);
 
-            if ($.isFunction(done)) {// can be event too
-                done();
-            }
+                if ($.isFunction(done)) {// can be event too
+                    done();
+                }
+            }, 150);
         }
 
         function onModelsReady() {

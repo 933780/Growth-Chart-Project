@@ -3,11 +3,16 @@ using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// ─── Load local secrets (gitignored) ─────────────────────────────────────────
+builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true);
+
+// ─── JSON camelCase ───────────────────────────────────────────────────────────
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
     options.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
 });
 
+// ─── CORS ─────────────────────────────────────────────────────────────────────
 var allowedOrigins = builder.Configuration
     .GetSection("Cors:AllowedOrigins")
     .Get<string[]>() ?? Array.Empty<string>();
@@ -17,22 +22,42 @@ builder.Services.AddCors(o => o.AddPolicy("dev",
           .AllowAnyHeader()
           .AllowAnyMethod()));
 
+// ─── Swagger ──────────────────────────────────────────────────────────────────
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new()
+    {
+        Title       = "Growth Chart API",
+        Version     = "v1",
+        Description = "API for fetching patient growth data from digital.p_getopvitals_growthchart"
+    });
+});
+
+// ─── Postgres ─────────────────────────────────────────────────────────────────
 var connStr = builder.Configuration.GetConnectionString("Postgres")
     ?? throw new InvalidOperationException(
-           "Missing ConnectionStrings:Postgres in appsettings.json");
+           "Missing ConnectionStrings:Postgres in appsettings.Local.json");
 
 var app = builder.Build();
-app.UseCors("dev");
 
-// ─── HELPER: open a fresh connection ──────────────────────────────────────────
-NpgsqlConnection OpenDb()
+app.UseCors("dev");
+app.UseSwagger();
+app.UseSwaggerUI(c =>
+{
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "Growth Chart API v1");
+    c.RoutePrefix = "swagger";
+});
+
+// ─── HELPER: open a fresh connection ─────────────────────────────────────────
+static async Task<NpgsqlConnection> OpenDb(string connStr)
 {
     var conn = new NpgsqlConnection(connStr);
-    conn.Open();
+    await conn.OpenAsync();
     return conn;
 }
 
-// ─── HELPER: age in months between two dates ──────────────────────────────────
+// ─── HELPER: age in months between two dates ─────────────────────────────────
 static double AgeInMonths(DateTime birth, DateTime obs)
 {
     return (obs.Year  - birth.Year)  * 12
@@ -40,167 +65,126 @@ static double AgeInMonths(DateTime birth, DateTime obs)
          + (obs.Day   - birth.Day)   / 30.0;
 }
 
-// ─── HELPER: call digital.p_getopvitals_growthchart via REFCURSOR ─────────────
+// ─── HELPER: call digital.p_getopvitals_growthchart via REFCURSOR ────────────
 //
-//   CALL digital.p_getopvitals_growthchart(<uhid>, 'ocursor_opvitals');
-//
-// Columns returned by the cursor (exact DB names):
-//   uhid               TEXT
-//   opnumber           TEXT
-//   dob                DATE   ← patient's date of birth
-//   gender             TEXT   ('M' / 'F')
-//   patientheight      NUMERIC (cm, nullable)
-//   patientweight      NUMERIC (kg, nullable)
-//   head_circumference NUMERIC (cm, nullable)
-//   bmi                NUMERIC (nullable — DB-calculated, used as-is)
-//   bsa                NUMERIC (nullable)
-//
-// No visit_date column yet → agemos = age at today's date.
-// No patient_name column  → Demographics["name"] = uhid as fallback.
-// No parental heights     → FamilyHistory omitted / empty.
+// Columns returned by the cursor:
+//   uhid          TEXT
+//   opnumber      TEXT
+//   dob           DATE      ← raw birthdate
+//   visit_date    DATE      ← CURRENT_DATE placeholder until real column added
+//   gender        TEXT      ('Male' / 'Female')
+//   patientheight NUMERIC   (cm, nullable)
+//   patientweight NUMERIC   (kg, nullable)
+//   head_circumm  NUMERIC   (cm, nullable)
+//   bmi           NUMERIC   (nullable)
+//   bsa           NUMERIC   (nullable)
+//   father_height NUMERIC   (NULL placeholder — defaults to 170.0 if absent)
+//   mother_height NUMERIC   (NULL placeholder — defaults to 158.0 if absent)
 // ─────────────────────────────────────────────────────────────────────────────
-static async Task<ProcessedPatientData?> FetchFromDb(NpgsqlConnection conn, string uhid)
+static async Task<ProcessedPatientData?> FetchFromDb(NpgsqlConnection conn, string opnumber)
 {
-    // PostgreSQL REFCURSOR procedures must run inside a transaction.
-    using var tx = await conn.BeginTransactionAsync();
+    await using var tx = await conn.BeginTransactionAsync();
 
-    try
+    // 1️⃣ Call the stored procedure (cursor)
+    await using (var cmd = new NpgsqlCommand("CALL digital.p_getopvitals_growthchart(@opno, @ref)", conn, tx))
     {
-        // Step 1: CALL the procedure.
-        // The procedure returns the cursor reference as a result row (not a named cursor),
-        // so we use ExecuteScalarAsync to read the cursor name back from the result.
-        string cursorName;
-        using (var callCmd = new NpgsqlCommand(
-            "CALL digital.p_getopvitals_growthchart(@p_uhid, NULL)", conn, tx))
+        cmd.Parameters.AddWithValue("opno", opnumber);
+        cmd.Parameters.AddWithValue("ref", "ref1");
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    // 2️⃣ Fetch from cursor
+    await using var fetch = new NpgsqlCommand("FETCH ALL IN ref1", conn, tx);
+    await using var reader = await fetch.ExecuteReaderAsync();
+
+    if (!reader.HasRows)
+        return null;
+
+    var data = new ProcessedPatientData();
+
+    // Prepare collections
+    var heightList = new List<VitalReading>();
+    var weightList = new List<VitalReading>();
+
+    // Default parents height (fallback)
+    double fatherHeight = 170.0;
+    double motherHeight = 158.0;
+
+    while (await reader.ReadAsync())
+    {
+        var dob = SafeDate(reader, "dob");
+        var visitDate = SafeDateWithFallback(reader, "visit_date", DateTime.UtcNow);
+
+        var ageMonths = (dob != DateTime.MinValue)
+            ? AgeInMonths(dob, visitDate)
+            : 0;
+
+        var height = SafeDouble(reader, "patientheight");
+        var weight = SafeDouble(reader, "patientweight");
+
+        // ✅ Read parent heights (fallback applied)
+        fatherHeight = SafeDouble(reader, "father_height") ?? fatherHeight;
+        motherHeight = SafeDouble(reader, "mother_height") ?? motherHeight;
+
+        if (height.HasValue)
         {
-            callCmd.Parameters.AddWithValue("p_uhid", uhid.Trim());
-            using var callReader = await callCmd.ExecuteReaderAsync();
-            if (!await callReader.ReadAsync())
-                throw new Exception("CALL returned no rows — procedure may have failed.");
-            cursorName = callReader.GetString(0); // cursor name is in column 0
-            await callReader.CloseAsync();
+            heightList.Add(new VitalReading
+            {
+                Agemos = ageMonths,
+                Value = height.Value
+            });
         }
 
-        // Step 2: FETCH ALL rows from the cursor returned by the procedure.
-        using var fetchCmd = new NpgsqlCommand($"FETCH ALL FROM \"{cursorName}\"", conn, tx);
-        using var reader   = await fetchCmd.ExecuteReaderAsync();
-
-        DateTime birth    = default;
-        string   gender   = "male";
-        bool     hasRow   = false;
-        string   opnumber = "";
-
-        var weightData = new List<VitalReading>();
-        var lengthData = new List<VitalReading>();
-        var headCData  = new List<VitalReading>();
-        var bmiData    = new List<VitalReading>();
-
-        while (await reader.ReadAsync())
+        if (weight.HasValue)
         {
-            hasRow = true;
-
-            // ── Demographics — read once on first row ─────────────────────
-            if (!hasRow || birth == default)
+            weightList.Add(new VitalReading
             {
-                opnumber = SafeString(reader, "opnumber") ?? "";
-
-                var raw = (SafeString(reader, "gender") ?? "").ToLower();
-                gender  = raw switch
-                {
-                    "f" or "female" => "female",
-                    _               => "male"
-                };
-
-                // proc returns age-in-years string e.g. "27" not a real date
-                // workaround: build a synthetic birthdate from years
-                var dobRaw = SafeString(reader, "dob") ?? "0";
-                if (double.TryParse(dobRaw.Trim(), out var ageYears) && ageYears > 0)
-                    birth = DateTime.Today.AddYears(-(int)ageYears);
-            }
-
-            // agemos from synthetic birthdate (accurate to ~1 month)
-            var agemos = birth != default && birth != DateTime.MinValue
-                ? AgeInMonths(birth, DateTime.Today)
-                : 0.0;
-
-            // ── Vitals from exact DB column names ─────────────────────────
-            var ht = SafeDouble(reader, "patientheight");
-            var wt = SafeDouble(reader, "patientweight");
-            var hc = SafeDouble(reader, "head_circumference");
-            var bm = SafeDouble(reader, "bmi");   // DB-supplied BMI
-
-            if (wt.HasValue)
-                weightData.Add(new VitalReading { Agemos = agemos, Value = wt.Value });
-
-            if (ht.HasValue)
-                lengthData.Add(new VitalReading { Agemos = agemos, Value = ht.Value });
-
-            if (hc.HasValue)
-                headCData.Add(new VitalReading { Agemos = agemos, Value = hc.Value });
-
-            // Prefer DB-supplied BMI; fall back to calculating if absent.
-            if (bm.HasValue)
-                bmiData.Add(new VitalReading { Agemos = agemos, Value = bm.Value });
-            else if (wt.HasValue && ht.HasValue && ht.Value > 0)
-                bmiData.Add(new VitalReading
-                {
-                    Agemos = agemos,
-                    Value  = Math.Round(wt.Value / Math.Pow(ht.Value / 100.0, 2), 1)
-                });
+                Agemos = ageMonths,
+                Value = weight.Value
+            });
         }
 
-        await reader.CloseAsync();
-        await tx.CommitAsync();
-
-        if (!hasRow) return null; // UHID not found
-
-        return new ProcessedPatientData
+        // ✅ Demographics (set once)
+        if (data.Demographics.Count == 0)
         {
-            Demographics = new Dictionary<string, object>
-            {
-                // No patient_name column yet — use uhid as display identifier.
-                { "name",     uhid.Trim() },
-                { "opnumber", opnumber },
-                { "birthday", birth == default ? "" : birth.ToString("yyyy-MM-dd") },
-                { "gender",   gender }
-            },
-            Vitals = new Dictionary<string, List<VitalReading>>
-            {
-                { "weightData", weightData },
-                { "lengthData", lengthData },
-                { "headCData",  headCData  },
-                { "BMIData",    bmiData    }
-            },
-            BoneAge       = new(),
-            // No parental height columns in DB — send empty placeholders.
-            FamilyHistory = new Dictionary<string, ParentData>
-            {
-                { "father", new() { Height = null, IsBio = false } },
-                { "mother", new() { Height = null, IsBio = false } }
-            }
-        };
+            data.Demographics["name"] = SafeString(reader, "uhid") ?? "";
+            data.Demographics["birthday"] = dob;
+            data.Demographics["gender"] = SafeString(reader, "gender") ?? "";
+        }
     }
-    catch
+
+    // Assign vitals
+    data.Vitals["height"] = heightList;
+    data.Vitals["weight"] = weightList;
+
+    // ✅ Assign family history with fallback applied
+    data.FamilyHistory["father"] = new ParentData
     {
-        await tx.RollbackAsync();
-        throw;
-    }
+        Height = fatherHeight,
+        IsBio = true
+    };
+
+    data.FamilyHistory["mother"] = new ParentData
+    {
+        Height = motherHeight,
+        IsBio = true
+    };
+
+    await tx.CommitAsync();
+
+    return data;
 }
 
-// ─── Safe reader helpers ───────────────────────────────────────────────────────
+// ─── Safe reader helpers ──────────────────────────────────────────────────────
 static string? SafeString(NpgsqlDataReader r, string col)
 {
-    try { return r.IsDBNull(r.GetOrdinal(col)) ? null : r.GetString(r.GetOrdinal(col)); }
+    try { var o = r.GetOrdinal(col); return r.IsDBNull(o) ? null : r.GetString(o); }
     catch { return null; }
 }
 
 static double? SafeDouble(NpgsqlDataReader r, string col)
 {
-    try
-    {
-        var ord = r.GetOrdinal(col);
-        return r.IsDBNull(ord) ? null : Convert.ToDouble(r.GetValue(ord));
-    }
+    try { var o = r.GetOrdinal(col); return r.IsDBNull(o) ? null : Convert.ToDouble(r.GetValue(o)); }
     catch { return null; }
 }
 
@@ -208,139 +192,137 @@ static DateTime SafeDate(NpgsqlDataReader r, string col)
 {
     try
     {
-        var ord = r.GetOrdinal(col);
-        if (r.IsDBNull(ord)) return DateTime.MinValue;
-        var val = r.GetValue(ord);
+        var o = r.GetOrdinal(col);
+        if (r.IsDBNull(o)) return DateTime.MinValue;
+        var val = r.GetValue(o);
         return val switch
         {
             DateTime dt => dt,
             DateOnly d  => d.ToDateTime(TimeOnly.MinValue),
-            string   s  => DateTime.TryParse(s, out var p) ? p : DateTime.MinValue,
-            _           => DateTime.MinValue
+            string s    => DateTime.TryParse(s, System.Globalization.CultureInfo.InvariantCulture,
+                               System.Globalization.DateTimeStyles.None, out var p)
+                               ? p : DateTime.MinValue,
+            _           => DateTime.TryParse(val.ToString(),
+                               System.Globalization.CultureInfo.InvariantCulture,
+                               System.Globalization.DateTimeStyles.None, out var p2)
+                               ? p2 : DateTime.MinValue
         };
     }
     catch { return DateTime.MinValue; }
 }
 
+static DateTime SafeDateWithFallback(NpgsqlDataReader r, string col, DateTime fallback)
+{
+    try
+    {
+        var o = r.GetOrdinal(col);
+        if (r.IsDBNull(o)) return fallback;
+        var result = r.GetValue(o) switch
+        {
+            DateTime dt => dt,
+            DateOnly d  => d.ToDateTime(TimeOnly.MinValue),
+            string   s  => DateTime.TryParse(s, out var p) ? p : fallback,
+            _           => fallback
+        };
+        return result == DateTime.MinValue ? fallback : result;
+    }
+    catch { return fallback; }
+}
 
 // ============ Endpoints ============
 
-// GET /api/patients/search?uhid=OP1615352
-app.MapGet("/api/patients/search", async (string? uhid) =>
+app.MapGet("/api/patients/search", async (string? opnumber) =>
 {
-    if (string.IsNullOrWhiteSpace(uhid))
-        return Results.BadRequest(new { error = "uhid parameter required." });
-
+    if (string.IsNullOrWhiteSpace(opnumber))
+        return Results.BadRequest(new { error = "opnumber parameter required." });
     try
     {
-        using var conn = OpenDb();
-        var data = await FetchFromDb(conn, uhid);
-
-        if (data == null)
-            return Results.Json(new { found = false });
-
+        await using var conn = await OpenDb(connStr);
+        var data = await FetchFromDb(conn, opnumber);
+        if (data == null) return Results.Json(new { found = false });
         return Results.Json(new
         {
             found    = true,
-            uhid,
-            opnumber = data.Demographics["opnumber"],
+            opnumber,
+            uhid     = data.Demographics["name"],
             dob      = data.Demographics["birthday"],
             gender   = data.Demographics["gender"]
         });
     }
-    catch (Exception ex)
-    {
-        return Results.Json(new { error = "DB error", details = ex.Message }, statusCode: 500);
-    }
+    catch (Exception ex) { return Results.Json(new { error = "DB error", details = ex.Message }, statusCode: 500); }
 })
-.WithName("SearchByUhid");
+.WithName("SearchByOpNumber").WithTags("Patients")
+.WithSummary("Search patient by OP Number")
+.WithDescription("Pass an OP Number (e.g. OP1615352). Calls digital.p_getopvitals_growthchart and returns basic demographics.")
+.Produces(200).Produces(400).Produces(500);
 
-// GET /api/patients/{uhid}/data  — full chart payload
-app.MapGet("/api/patients/{uhid}/data", async (string uhid) =>
+app.MapGet("/api/patients/{opnumber}/data", async (string opnumber) =>
 {
     try
     {
-        using var conn = OpenDb();
-        var data = await FetchFromDb(conn, uhid);
-
-        if (data == null)
-            return Results.NotFound(new { error = "Patient not found." });
-
+        await using var conn = await OpenDb(connStr);
+        var data = await FetchFromDb(conn, opnumber);
+        if (data == null) return Results.NotFound(new { error = "Patient not found." });
         return Results.Json(data);
     }
-    catch (Exception ex)
-    {
-        return Results.Json(new { error = "DB error", details = ex.Message }, statusCode: 500);
-    }
+    catch (Exception ex) { return Results.Json(new { error = "DB error", details = ex.Message }, statusCode: 500); }
 })
-.WithName("GetPatientData");
+.WithName("GetPatientChartData").WithTags("Patients")
+.WithSummary("Get chart-ready patient data by OP Number")
+.WithDescription("Pass an OP Number (e.g. OP1615352). Returns demographics + vitals formatted for the growth chart renderer.")
+.Produces<ProcessedPatientData>(200).Produces(404).Produces(500);
 
-// GET /api/patients/{uhid}  — alias
-app.MapGet("/api/patients/{uhid}", async (string uhid) =>
+app.MapGet("/api/patients/{opnumber}", async (string opnumber) =>
 {
     try
     {
-        using var conn = OpenDb();
-        var data = await FetchFromDb(conn, uhid);
-
-        if (data == null)
-            return Results.NotFound(new { error = "Patient not found." });
-
+        await using var conn = await OpenDb(connStr);
+        var data = await FetchFromDb(conn, opnumber);
+        if (data == null) return Results.NotFound(new { error = "Patient not found." });
         return Results.Json(data);
     }
-    catch (Exception ex)
-    {
-        return Results.Json(new { error = "DB error", details = ex.Message }, statusCode: 500);
-    }
+    catch (Exception ex) { return Results.Json(new { error = "DB error", details = ex.Message }, statusCode: 500); }
 })
-.WithName("GetPatient");
+.WithName("GetPatient").WithTags("Patients")
+.WithSummary("Get raw patient data by OP Number")
+.WithDescription("Pass an OP Number (e.g. OP1615352). Returns the full patient object including demographics, vitals, and family history.")
+.Produces<ProcessedPatientData>(200).Produces(404).Produces(500);
 
-// GET /api/health
 app.MapGet("/api/health", async () =>
 {
     try
     {
-        using var conn = OpenDb();
-        using var cmd  = new NpgsqlCommand("SELECT 1", conn);
+        await using var conn = await OpenDb(connStr);
+        await using var cmd  = new NpgsqlCommand("SELECT 1", conn);
         await cmd.ExecuteScalarAsync();
         return Results.Ok(new { status = "ok", db = "connected" });
     }
-    catch (Exception ex)
-    {
-        return Results.Json(new { status = "error", details = ex.Message }, statusCode: 500);
-    }
+    catch (Exception ex) { return Results.Json(new { status = "error", details = ex.Message }, statusCode: 500); }
 })
-.WithName("HealthCheck");
+.WithName("HealthCheck").WithTags("Health")
+.WithSummary("DB health check")
+.WithDescription("Runs SELECT 1 against Postgres. Returns 200 if connected.")
+.Produces(200).Produces(500);
 
-// GET /api/debug/{uhid}
-// ⚠️  REMOVE IN PRODUCTION — exposes raw DB errors and query details.
-// Hit this first when troubleshooting a 500. It tries the CALL step and the
-// FETCH step separately and reports exactly where it fails.
-app.MapGet("/api/debug/{uhid}", async (string uhid) =>
+// GET /api/debug/{opnumber} ⚠️ REMOVE IN PRODUCTION
+app.MapGet("/api/debug/{opnumber}", async (string opnumber) =>
 {
     var log = new List<string>();
     try
     {
-        using var conn = OpenDb();
+        await using var conn = await OpenDb(connStr);
         log.Add("✅ DB connection OK");
 
-        using var tx = await conn.BeginTransactionAsync();
+        await using var tx = await conn.BeginTransactionAsync();
         log.Add("✅ Transaction started");
 
-        // ── Step 1: CALL ────────────────────────────────────────────────────
-        string cursorName;
         try
         {
-            using var callCmd = new NpgsqlCommand(
-                "CALL digital.p_getopvitals_growthchart(@p_uhid, NULL)",
-                conn, tx);
-            callCmd.Parameters.AddWithValue("p_uhid", uhid.Trim());
-            using var callReader = await callCmd.ExecuteReaderAsync();
-            if (!await callReader.ReadAsync())
-                throw new Exception("CALL returned no rows.");
-            cursorName = callReader.GetString(0);
-            await callReader.CloseAsync();
-            log.Add($"✅ CALL procedure OK — cursor name: '{cursorName}'");
+            await using var callCmd = new NpgsqlCommand(
+                "CALL digital.p_getopvitals_growthchart(@p_uhid, 'mycursor'::refcursor)", conn, tx);
+            callCmd.Parameters.AddWithValue("p_uhid", opnumber.Trim());
+            await callCmd.ExecuteNonQueryAsync();
+            log.Add("✅ CALL OK — cursor name: 'mycursor'");
         }
         catch (Exception ex)
         {
@@ -349,19 +331,14 @@ app.MapGet("/api/debug/{uhid}", async (string uhid) =>
             return Results.Json(new { steps = log, hint = "Procedure name/schema/param wrong, or no EXECUTE permission." });
         }
 
-        // ── Step 2: FETCH ───────────────────────────────────────────────────
         var rows     = new List<Dictionary<string, object?>>();
         var colNames = new List<string>();
         try
         {
-            using var fetchCmd = new NpgsqlCommand(
-                $"FETCH ALL FROM \"{cursorName}\"", conn, tx);
-            using var reader = await fetchCmd.ExecuteReaderAsync();
-
-            for (int i = 0; i < reader.FieldCount; i++)
-                colNames.Add(reader.GetName(i));
+            await using var fetchCmd = new NpgsqlCommand("FETCH ALL FROM \"mycursor\"", conn, tx);
+            await using var reader   = await fetchCmd.ExecuteReaderAsync();
+            for (int i = 0; i < reader.FieldCount; i++) colNames.Add(reader.GetName(i));
             log.Add($"✅ FETCH OK — columns: [{string.Join(", ", colNames)}]");
-
             while (await reader.ReadAsync())
             {
                 var row = new Dictionary<string, object?>();
@@ -369,14 +346,14 @@ app.MapGet("/api/debug/{uhid}", async (string uhid) =>
                     row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i)?.ToString();
                 rows.Add(row);
             }
-            log.Add($"✅ Rows returned: {rows.Count}");
+            log.Add($"✅ Rows: {rows.Count}");
             await reader.CloseAsync();
         }
         catch (Exception ex)
         {
             await tx.RollbackAsync();
             log.Add($"❌ FETCH failed: {ex.Message}");
-            return Results.Json(new { steps = log, hint = "Cursor name mismatch or cursor not opened." });
+            return Results.Json(new { steps = log, hint = "Cursor fetch failed." });
         }
 
         await tx.CommitAsync();
@@ -388,7 +365,9 @@ app.MapGet("/api/debug/{uhid}", async (string uhid) =>
         return Results.Json(new { steps = log }, statusCode: 500);
     }
 })
-.WithName("DebugUhid");
+.WithName("DebugOpNumber").WithTags("Debug")
+.WithSummary("⚠️ Debug endpoint — REMOVE IN PRODUCTION")
+.WithDescription("Pass an OP Number (e.g. OP1615352). Tests the CALL and FETCH steps separately. Shows exact columns returned by the cursor.");
 
 app.Run();
 

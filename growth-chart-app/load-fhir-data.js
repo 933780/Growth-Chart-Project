@@ -303,14 +303,14 @@ GC.get_data = function() {
             })
             .then(function(processedData) {
                 console.log('Loaded from .NET backend:', processedData);
-                // Backend already returns the exact shape gc-app.js expects
+                var v = processedData.vitals || {};
                 return {
                     demographics: processedData.demographics || {},
                     vitals: {
-                        lengthData: (processedData.vitals && processedData.vitals.lengthData) || [],
-                        weightData: (processedData.vitals && processedData.vitals.weightData) || [],
-                        BMIData:    (processedData.vitals && processedData.vitals.BMIData)    || [],
-                        headCData:  (processedData.vitals && processedData.vitals.headCData)  || []
+                        lengthData: v.lengthData || [],
+                        weightData: v.weightData || [],
+                        BMIData:    v.BMIData    || [],
+                        headCData:  v.headCData  || []
                     },
                     boneAge: processedData.boneAge || [],
                     familyHistory: processedData.familyHistory || {
