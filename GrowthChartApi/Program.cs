@@ -85,94 +85,113 @@ static async Task<ProcessedPatientData?> FetchFromDb(NpgsqlConnection conn, stri
 {
     await using var tx = await conn.BeginTransactionAsync();
 
-    // 1️⃣ Call the stored procedure (cursor)
-    await using (var cmd = new NpgsqlCommand("CALL digital.p_getopvitals_growthchart(@opno, @ref)", conn, tx))
+    try
     {
-        cmd.Parameters.AddWithValue("opno", opnumber);
-        cmd.Parameters.AddWithValue("ref", "ref1");
-        await cmd.ExecuteNonQueryAsync();
-    }
+        // Step 1: CALL — cursor named explicitly so no need to read it back
+        await using var callCmd = new NpgsqlCommand(
+            "CALL digital.p_getopvitals_growthchart(@p_uhid, 'mycursor'::refcursor)", conn, tx);
+        callCmd.Parameters.AddWithValue("p_uhid", opnumber.Trim());
+        await callCmd.ExecuteNonQueryAsync();
 
-    // 2️⃣ Fetch from cursor
-    await using var fetch = new NpgsqlCommand("FETCH ALL IN ref1", conn, tx);
-    await using var reader = await fetch.ExecuteReaderAsync();
+        // Step 2: FETCH ALL from the named cursor
+        await using var fetchCmd = new NpgsqlCommand(
+            "FETCH ALL FROM \"mycursor\"", conn, tx);
+        await using var reader = await fetchCmd.ExecuteReaderAsync();
 
-    if (!reader.HasRows)
-        return null;
+        DateTime birth        = default;
+        string   gender       = "male";
+        bool     hasRow       = false;
+        string   patientOpNum = "";
+        double?  fatherHeight = null;
+        double?  motherHeight = null;
 
-    var data = new ProcessedPatientData();
+        var weightData = new List<VitalReading>();
+        var lengthData = new List<VitalReading>();
+        var headCData  = new List<VitalReading>();
+        var bmiData    = new List<VitalReading>();
 
-    // Prepare collections
-    var heightList = new List<VitalReading>();
-    var weightList = new List<VitalReading>();
-
-    // Default parents height (fallback)
-    double fatherHeight = 170.0;
-    double motherHeight = 158.0;
-
-    while (await reader.ReadAsync())
-    {
-        var dob = SafeDate(reader, "dob");
-        var visitDate = SafeDateWithFallback(reader, "visit_date", DateTime.UtcNow);
-
-        var ageMonths = (dob != DateTime.MinValue)
-            ? AgeInMonths(dob, visitDate)
-            : 0;
-
-        var height = SafeDouble(reader, "patientheight");
-        var weight = SafeDouble(reader, "patientweight");
-
-        // ✅ Read parent heights (fallback applied)
-        fatherHeight = SafeDouble(reader, "father_height") ?? fatherHeight;
-        motherHeight = SafeDouble(reader, "mother_height") ?? motherHeight;
-
-        if (height.HasValue)
+        while (await reader.ReadAsync())
         {
-            heightList.Add(new VitalReading
+            if (!hasRow)
             {
-                Agemos = ageMonths,
-                Value = height.Value
-            });
+                hasRow       = true;
+                patientOpNum = SafeString(reader, "opnumber") ?? "";
+                birth        = SafeDate(reader, "dob");
+
+                var raw = (SafeString(reader, "gender") ?? "").Trim().ToLower();
+                gender  = raw switch
+                {
+                    "f" or "female" => "female",
+                    _               => "male"
+                };
+            }
+
+            // visit_date = CURRENT_DATE from proc until real column available
+            var visitDate = SafeDateWithFallback(reader, "visit_date", DateTime.Today);
+            var agemos    = birth != default ? AgeInMonths(birth, visitDate) : 0.0;
+
+            var ht = SafeDouble(reader, "patientheight");
+            var wt = SafeDouble(reader, "patientweight");
+            var hc = SafeDouble(reader, "head_circumm");
+            var bm = SafeDouble(reader, "bmi");
+
+            // Read parent heights inside loop while reader is open
+            fatherHeight = SafeDouble(reader, "father_height");
+            motherHeight = SafeDouble(reader, "mother_height");
+
+            if (wt.HasValue)
+                weightData.Add(new VitalReading { Agemos = agemos, Value = wt.Value });
+            if (ht.HasValue)
+                lengthData.Add(new VitalReading { Agemos = agemos, Value = ht.Value });
+            if (hc.HasValue)
+                headCData.Add(new VitalReading { Agemos = agemos, Value = hc.Value });
+
+            if (bm.HasValue)
+                bmiData.Add(new VitalReading { Agemos = agemos, Value = bm.Value });
+            else if (wt.HasValue && ht.HasValue && ht.Value > 0)
+                bmiData.Add(new VitalReading
+                {
+                    Agemos = agemos,
+                    Value  = Math.Round(wt.Value / Math.Pow(ht.Value / 100.0, 2), 1)
+                });
         }
 
-        if (weight.HasValue)
+        await reader.CloseAsync();
+        await tx.CommitAsync();
+
+        if (!hasRow) return null;
+
+        return new ProcessedPatientData
         {
-            weightList.Add(new VitalReading
+            Demographics = new Dictionary<string, object>
             {
-                Agemos = ageMonths,
-                Value = weight.Value
-            });
-        }
-
-        // ✅ Demographics (set once)
-        if (data.Demographics.Count == 0)
-        {
-            data.Demographics["name"] = SafeString(reader, "uhid") ?? "";
-            data.Demographics["birthday"] = dob;
-            data.Demographics["gender"] = SafeString(reader, "gender") ?? "";
-        }
+                { "name",     patientOpNum.Trim() },
+                { "opnumber", patientOpNum },
+                { "birthday", birth == default ? "" : birth.ToString("yyyy-MM-dd") },
+                { "gender",   gender }
+            },
+            Vitals = new Dictionary<string, List<VitalReading>>
+            {
+                { "weightData", weightData },
+                { "lengthData", lengthData },
+                { "headCData",  headCData  },
+                { "BMIData",    bmiData    }
+            },
+            BoneAge       = new(),
+            FamilyHistory = new Dictionary<string, ParentData>
+            {
+                // IsBio = true only when real DB value present
+                // Defaults: WHO/CDC population averages (father 170cm, mother 158cm)
+                { "father", new() { Height = fatherHeight ?? 170.0, IsBio = fatherHeight.HasValue } },
+                { "mother", new() { Height = motherHeight ?? 158.0, IsBio = motherHeight.HasValue } }
+            }
+        };
     }
-
-    // Assign vitals
-    data.Vitals["height"] = heightList;
-    data.Vitals["weight"] = weightList;
-
-    // ✅ Assign family history with fallback applied
-    data.FamilyHistory["father"] = new ParentData
+    catch
     {
-        Height = fatherHeight,
-        IsBio = true
-    };
-
-    data.FamilyHistory["mother"] = new ParentData
-    {
-        Height = motherHeight,
-        IsBio = true
-    };
-
-    await tx.CommitAsync();
-
-    return data;
+        await tx.RollbackAsync();
+        throw;
+    }
 }
 
 // ─── Safe reader helpers ──────────────────────────────────────────────────────
