@@ -16,8 +16,8 @@
         // BIRTH_XDATE = new XDate(),
         MIN_WEEK_DIFF = NS.chartSettings.minTimeInterval / NS.Constants.TIME.WEEK,
         BROADCASTER = $("html"),
-        PRIMARY_CHART_TYPE = "WHO", // CDC, WHO etc.
-        CORRECTION_CHART_TYPE = "WHO", // CDC, WHO etc.
+        PRIMARY_CHART_TYPE = "CDC",
+        CORRECTION_CHART_TYPE = "CDC", // CDC, WHO etc.
         START_WEEK = 0,
         END_WEEK = 26.08928571428572,
         START_AGE_MOS = null,
@@ -278,6 +278,12 @@
                 leftPane = new ChartPane(Raphael($("#stage .stage-1")[0]));
                 leftPane.addChart(new GC.App.Charts["Length/Stature Chart"](), 0);
                 leftPane.addChart(new GC.App.Charts["Weight Chart"](), 0);
+
+                // WFL chart — always uses WHO data source (only WHO has WFL)
+                var wflChart = new GC.App.Charts["Weight for Length Chart"]();
+                wflChart.setDataSource("WHO");
+                leftPane.addChart(wflChart, 0);
+
                 leftPane.addChart(new GC.App.Charts["Percentile Chart"](), 1);
                 leftPane.addChart(new GC.App.Charts["Chart Stack"]([new GC.App.Charts["Body Mass Index Chart"](), new GC.App.Charts["Head Circumference Chart"]()]), 1);
                 NS.App.Pane = leftPane;

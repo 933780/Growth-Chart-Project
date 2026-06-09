@@ -456,6 +456,38 @@ window.GC = window.GC || {};
             }
         },
 
+        wflChart : {
+            abbr        : "WFL",
+            shortName   : "WFL",
+            color       : "",
+            lines : {
+                stroke           : "",
+                "stroke-width"   : 1,
+                "stroke-linejoin": "round"
+            },
+            axis : {
+                stroke           : "",
+                "stroke-width"   : 1,
+                "shape-rendering": "crispedges"
+            },
+            axisLabels : {
+                "fill"      : "",
+                "font-size" : 12
+            },
+            pointsColor : "",
+            fillRegion : {
+                fill           : "",
+                "fill-opacity" : 0.6,
+                "stroke-width" : 0
+            },
+            problemRegion : {
+                fillOpacity : 0.3,
+                fillColor   : "",
+                fillURL     : "url(img/problem-pattern-blue.png)",
+                stroke      : "none"
+            }
+        },
+
         patientData : {
             points : {
                 even : {
@@ -521,6 +553,16 @@ window.GC = window.GC || {};
     setChartSettingsColors("lengthChart",   settings.colorPrresets.Default["Length"]);
     setChartSettingsColors("headChart",     settings.colorPrresets.Default["Head C"]);
     setChartSettingsColors("bodyMassChart", settings.colorPrresets.Default["BMI"]);
+
+    // WFL chart uses a fixed steel-blue colour across all presets
+    var wflColor = "#7B9EC9";
+    settings.wflChart.color                    = wflColor;
+    settings.wflChart.fillRegion.fill          = wflColor;
+    settings.wflChart.lines.stroke             = GC.Util.darken(wflColor, 80);
+    settings.wflChart.axis.stroke              = GC.Util.darken(wflColor, 90);
+    settings.wflChart.axisLabels.fill          = GC.Util.darken(wflColor, 70);
+    settings.wflChart.pointsColor              = GC.Util.darken(wflColor, 70);
+    settings.wflChart.problemRegion.fillColor  = wflColor;
 
     GC.chartSettings  = $.extend(true, {}, settings, readOnlySettings);
     GC.scratchpadData = $.extend(true, {}, scratchpadData);

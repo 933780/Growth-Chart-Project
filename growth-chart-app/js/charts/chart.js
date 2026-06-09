@@ -187,6 +187,12 @@ Chart.prototype = {
 
     // @primaryCurvesData
     _get_primaryCurvesData : function() {
+        // If the underlying dataset uses Length as X (e.g. Weight-for-Length),
+        // don't crop by age range — its X domain is length, not age (Agemos).
+        if (this.dataSet && GC.DATA_SETS[this.dataSet] && GC.DATA_SETS[this.dataSet].xAxis === "length") {
+            return GC.Util.getCurvesData(this.dataSet);
+        }
+
         return GC.Util.cropCurvesDataX(
             GC.Util.getCurvesData( this.dataSet ),
             GC.App.getStartAgeMos(),
@@ -1067,23 +1073,33 @@ Chart.prototype = {
 
                 if (point) {
 
-                    pct = this.dataSet ?
-                        GC.findPercentileFromX(
-                            point[1],
-                            GC.DATA_SETS[this.dataSet],
-                            gender,
-                            point[0]
-                        ) :
-                        null;
+                    if (this.dataSet) {
+                        if (typeof this.getPercentileAt === "function") {
+                            console.log("Using chart.getPercentileAt for " + this.title + " with point[1]=" + point[1] + " point[0]=" + point[0]);
+                            var pRes = this.getPercentileAt(point[1], point[0]);
+                            pct = pRes && pRes.pct !== undefined ? pRes.pct : null;
+                            z   = pRes && pRes.z   !== undefined ? pRes.z   : null;
+                            console.log("getPercentileAt returned pct=" + pct + " z=" + z);
+                        } else {
+                            console.log("Using global findPercentileFromX for " + this.title);
+                            pct = GC.findPercentileFromX(
+                                point[1],
+                                GC.DATA_SETS[this.dataSet],
+                                gender,
+                                point[0]
+                            );
 
-                    z = this.dataSet ?
-                        GC.findZFromX(
-                            point[1],
-                            GC.DATA_SETS[this.dataSet],
-                            gender,
-                            point[0]
-                        ) :
-                        null;
+                            z = GC.findZFromX(
+                                point[1],
+                                GC.DATA_SETS[this.dataSet],
+                                gender,
+                                point[0]
+                            );
+                        }
+                    } else {
+                        pct = null;
+                        z = null;
+                    }
 
                     data = {
                         agemos : point[0],
@@ -2219,12 +2235,8 @@ Chart.prototype = {
         // Compile the small text
         life1.setMonths( start );
         life2.setMonths( end );
-        //txt3.push( patient.gender == "male" ? "Boy, " : "Girl, ");
-        txt3.push( GC.Util.ucfirst(GC.str("STR_SMART_GENDER_" + patient.gender)) + ", ");
-        txt3.push(
-            (start === 0 ? "0" : life1.toString(GC.chartSettings.timeInterval)) +
-            " - " + life2.toString(GC.chartSettings.timeInterval)
-        );
+        // txt3 contains gender label; omit the age range (years) from watermark
+        txt3.push( GC.Util.ucfirst(GC.str("STR_SMART_GENDER_" + patient.gender)) );
         txt3 = txt3.join("");
 
         // Calculate watermark position (top-left for first row, or bottom-right

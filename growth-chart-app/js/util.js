@@ -1335,8 +1335,21 @@ if ( !Array.prototype.indexOf ) {
             }).attr(this.cfg.textAttr).addClass("tooltip-node");
             this.txt.push(this.text2);
         }
+        if (cfg.text3) {
+            // Make tertiary line slightly bolder and same color for visibility
+            var txt3Attr = $.extend({}, this.cfg.textAttr, { "font-weight": "bold" });
+            this.text3 = paper.text(0, 0, cfg.text3).attr({
+                "text-anchor" : "start",
+                "fill" : cfg.color
+            }).attr(txt3Attr).addClass("tooltip-node");
+            this.txt.push(this.text3);
+        }
 
         this.textBox = this.txt.getBBox();
+        // Defensive: ensure numeric bbox values to avoid NaN in path/text coords
+        if (!this.textBox || !isFinite(this.textBox.width) || !isFinite(this.textBox.height)) {
+            this.textBox = { width: 0, height: 0 };
+        }
 
         this.setOrientation(GC.Constants.DIRECTION.RIGHT);
 
@@ -1574,7 +1587,10 @@ if ( !Array.prototype.indexOf ) {
             }).attr(this.cfg.textAttr);
 
             if (this.text2) {
-                var textBox2 = this.text2.getBBox();
+                var textBox2 = this.text2.getBBox() || { width: 0, height: 0 };
+                if (!isFinite(textBox2.width) || !isFinite(textBox2.height)) {
+                    textBox2 = { width: 0, height: 0 };
+                }
                 this.text2.attr({
                     x : this.orient === GC.Constants.DIRECTION.RIGHT ?
                         this.p1.x + this.cfg.paddingX * 3 + this.textBox.width - textBox2.width :
@@ -1588,15 +1604,33 @@ if ( !Array.prototype.indexOf ) {
                             this.p1.x - (this.cfg.paddingX * 2 + this.textBox.width - textBox2.width)/*,
                         r = (textBox2.width + this.cfg.paddingX * 2) * (GC.Constants.DIRECTION.RIGHT ? 1 : -1)*/;
 
+                    // Ensure numeric coords for path construction
+                    if (!isFinite(l)) { l = this.p1.x; }
+                    var p2x = isFinite(this.p2.x) ? this.p2.x : (this.p1.x + 10);
+                    var p5x = isFinite(this.p5.x) ? this.p5.x : (p2x + 5);
+                    var p5y = isFinite(this.p5.y) ? this.p5.y : this.p1.y;
+                    var p3x = isFinite(this.p3.x) ? this.p3.x : p2x;
+                    var p3y = isFinite(this.p3.y) ? this.p3.y : this.p1.y + (this.textBox.height || 0);
+
                     this.text2bg.attr({
                         path :  "M" + l         + "," + this.p1.y +
-                                "H" + this.p2.x +
-                                "L" + this.p5.x + "," + this.p5.y +
-                                "L" + this.p3.x + "," + this.p3.y +
-                                "L" + l         + "," + this.p3.y +
+                                "H" + p2x +
+                                "L" + p5x + "," + p5y +
+                                "L" + p3x + "," + p3y +
+                                "L" + l         + "," + p3y +
                                 "z"
                     });
                 }
+            }
+            if (this.text3) {
+                // Place text3 as a tertiary line under the main text and raise it slightly
+                this.text3.attr({
+                    x : this.orient === GC.Constants.DIRECTION.RIGHT ?
+                        this.p1.x + this.cfg.paddingX :
+                        this.p1.x - this.cfg.paddingX,
+                    y : this.p1.y + this.cfg.paddingY + this.textBox.height / 2 + 12,
+                    "text-anchor" : this.orient === GC.Constants.DIRECTION.RIGHT ? "start" : "end"
+                });
             }
 
             this.triangle.attr(
@@ -1668,7 +1702,7 @@ if ( !Array.prototype.indexOf ) {
                 text2         : "",
                 arrowType     : false,
                 textAttr      : {
-                    "font-size" : 14
+                    "font-size" : 12
                 },
                 id            : Raphael.createUUID()
             }, settings), i;
