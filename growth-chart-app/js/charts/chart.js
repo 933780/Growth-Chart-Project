@@ -816,6 +816,9 @@ Chart.prototype = {
             this.problemDataSet = ds ? ds.name : "";
         }
 
+        // Invalidate cache so y-axis recalculates for the new dataset
+        this.__CACHE__ = {};
+
         return this;
     },
 
@@ -1335,7 +1338,7 @@ Chart.prototype = {
 
                         // last point of each line - draw dot and line label
                         if ( i === l - 1 ) {
-                            this.drawDataLineLabel(x, y, pcts[j]);
+                            this.drawDataLineLabel(x, y, data[j].label / 100);
                         }
                     }
 

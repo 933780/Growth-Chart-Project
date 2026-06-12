@@ -234,3 +234,109 @@ h1 {
   font-weight: 400;
   font-size: 0.8em;
 }
+/* ── Parental Heights section ───────────────────────────────────────────────── */
+
+.parental-heights {
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.parental-heights__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+/* cm / ft·in pill toggle */
+.unit-toggle {
+  display: flex;
+  background: #e5e7eb;
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.unit-toggle button {
+  padding: 3px 10px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.unit-toggle button.active {
+  background: #2563eb;
+  color: #fff;
+}
+
+/* Father + Mother side by side */
+.parent-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+/* Input + badge on one line */
+.height-input-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.height-input-group input {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  box-sizing: border-box;
+  width: 0; /* flex overrides this */
+}
+
+.height-input-group input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+}
+
+/* narrow ft / in boxes */
+.input-ftpart {
+  max-width: 52px !important;
+}
+
+.unit-badge {
+  font-size: 12px;
+  font-weight: 600;
+  color: #9ca3af;
+  white-space: nowrap;
+}
+
+/* MPH result line */
+.mph-preview {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: #eff6ff;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #1e40af;
+}
+
+.mph-range {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.field-error {
+  color: #ef4444;
+  font-size: 13px;
+  display: block;
+  margin-top: 4px;
+}

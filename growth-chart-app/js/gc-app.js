@@ -10,6 +10,7 @@
 
     var DEBUG_MODE = NS.chartSettings.appEnvironment === "DEVELOPMENT",
         leftPane = null,
+        wflChart = null,
         parentalDarwn = false,
         drawn = false,
         PATIENT = null,
@@ -50,7 +51,8 @@
         ],
 
         getStartAgeMos,
-        getEndAgeMos;
+        getEndAgeMos,
+        onDataSetsChange;
 
     window.debugLog = function(a) {
         if (DEBUG_MODE && window.console) {
@@ -280,7 +282,7 @@
                 leftPane.addChart(new GC.App.Charts["Weight Chart"](), 0);
 
                 // WFL chart — always uses WHO data source (only WHO has WFL)
-                var wflChart = new GC.App.Charts["Weight for Length Chart"]();
+                wflChart = new GC.App.Charts["Weight for Length Chart"]();
                 wflChart.setDataSource("WHO");
                 leftPane.addChart(wflChart, 0);
 
@@ -288,6 +290,12 @@
                 leftPane.addChart(new GC.App.Charts["Chart Stack"]([new GC.App.Charts["Body Mass Index Chart"](), new GC.App.Charts["Head Circumference Chart"]()]), 1);
                 NS.App.Pane = leftPane;
                 NS.App.ChartsView = leftPane;
+
+                // Now that leftPane exists, sync WFL visibility with the
+                // already-selected chart type (e.g. remove WFL when IAP is
+                // active). onDataSetsChange() is a no-op for WFL until both
+                // wflChart and leftPane are non-null, so we call it here.
+                onDataSetsChange();
             }
 
             leftPane.draw();
@@ -831,6 +839,19 @@
             // Patient
             GC.get_data()
             .then(function(data) {
+                // Override familyHistory with heights passed as URL params
+                // from the Angular form (?fatherHeight=172&motherHeight=160)
+                var urlParams   = new URLSearchParams(window.location.search);
+                var urlFatherH  = parseFloat(urlParams.get("fatherHeight"));
+                var urlMotherH  = parseFloat(urlParams.get("motherHeight"));
+                if (!isNaN(urlFatherH) || !isNaN(urlMotherH)) {
+                    data.familyHistory = data.familyHistory || {};
+                    data.familyHistory.father = data.familyHistory.father || {};
+                    data.familyHistory.mother = data.familyHistory.mother || {};
+                    if (!isNaN(urlFatherH)) { data.familyHistory.father.height = urlFatherH; data.familyHistory.father.isBio = true; }
+                    if (!isNaN(urlMotherH)) { data.familyHistory.mother.height = urlMotherH; data.familyHistory.mother.isBio = true; }
+                }
+
                 GC.currentPatient = PATIENT = new GC.Patient(
                     data.demographics,
                     data.vitals,
@@ -1002,6 +1023,13 @@
                     $("#time-ranges label").each(function() {
                         $(this).toggleClass("intermediate", !selected && selectedTab === this);
                     });
+
+                    // IAP+WHO: lock to % when entire visible range is in IAP segment (start >= 60 months)
+                    if (PRIMARY_CHART_TYPE === "IAP+WHO") {
+                        var inIAPOnly = (GC.App.getStartAgeMos() >= 60);
+                        $('[name="pctz"]').closest(".toggle-button-wrap").toggleClass("disabled", inIAPOnly);
+                        if (inIAPOnly) { GC.App.setPCTZ("pct"); }
+                    }
                 });
 
                 $("#time-ranges input").bind("change.updateUI", onTimeRangeTabChange).each(onTimeRangeTabChange);
@@ -1029,11 +1057,12 @@
 
             // Choose primary and secondary datasets and related behaviors
             // =================================================================
-            function onDataSetsChange() {
-                var isDSPremature = (GC.DATA_SETS[PRIMARY_CHART_TYPE + "_LENGTH"]||{}).isPremature ||
+            onDataSetsChange = function() {
+                var isDSPremature = (PRIMARY_CHART_TYPE !== "IAP+WHO") && (
+                                    (GC.DATA_SETS[PRIMARY_CHART_TYPE + "_LENGTH"]||{}).isPremature ||
                                     (GC.DATA_SETS[PRIMARY_CHART_TYPE + "_WEIGHT"]||{}).isPremature ||
                                     (GC.DATA_SETS[PRIMARY_CHART_TYPE + "_HEADC" ]||{}).isPremature ||
-                                    (GC.DATA_SETS[PRIMARY_CHART_TYPE + "_BMI"   ]||{}).isPremature;
+                                    (GC.DATA_SETS[PRIMARY_CHART_TYPE + "_BMI"   ]||{}).isPremature);
 
                 $("#the-tab").toggleClass(
                     "double",
@@ -1048,6 +1077,85 @@
                 );
 
                 $("html").toggleClass("premature", !!isDSPremature);
+
+                // ── WFL visibility: only show when WHO is active ──────────────────────────
+                if (wflChart && leftPane && leftPane.charts && leftPane.charts[0]) {
+                    var whoActive = (PRIMARY_CHART_TYPE === "WHO" || CORRECTION_CHART_TYPE === "WHO");
+                    var col = leftPane.charts[0];
+                    var wflEntry = null;
+                    var wflIdx = -1;
+
+                    for (var i = 0; i < col.length; i++) {
+                        if (col[i].chart === wflChart) {
+                            wflEntry = col[i];
+                            wflIdx = i;
+                            break;
+                        }
+                    }
+
+                    if (!whoActive && wflIdx !== -1) {
+                        // Remove WFL from the draw list
+                        col.splice(wflIdx, 1);
+                        leftPane.draw();
+                    } else if (whoActive && wflIdx === -1) {
+                        // Re-insert WFL at its original position (index 2, after Length and Weight)
+                        col.splice(2, 0, { colIndex: 0, chart: wflChart, rowIndex: 2 });
+                        leftPane.draw();
+                    }
+                }
+
+                // ── Tab visibility based on active dataset ────────────────────────────────
+                // Tabs are marked with data-tab-group in index.html:
+                //   data-tab-group="who-only"  → 0-13w, 0-6m, 0-5yr  (pre-5yr ranges)
+                //   data-tab-group="iap-range" → 5-18yr
+                //
+                // WHO        → show who-only tabs, hide iap-range tab
+                // IAP        → hide who-only tabs, show iap-range tab
+                // IAP+WHO    → show all tabs (spans full 0-18yr range)
+                // others     → show all (CDC etc. have their own full range)
+
+                var isIAP       = (PRIMARY_CHART_TYPE === "IAP");
+                var isIAPWHO    = (PRIMARY_CHART_TYPE === "IAP+WHO");
+                var isWHOOnly   = (PRIMARY_CHART_TYPE === "WHO");
+
+                $("#time-ranges .row .cell[data-tab-group='who-only']").toggle(!isIAP);
+                // Hide 0-20 tab for IAP+WHO (replaced by 0-5 tab)
+                $("#time-ranges .row .cell[data-tab-group='who-only']:last").toggle(!isIAP && !isIAPWHO);
+                $("#time-ranges .row .cell[data-tab-group='iapwho-range']").toggle(isIAPWHO);
+                $("#time-ranges .row .cell[data-tab-group='iap-range']").toggle(isIAP || isIAPWHO);
+
+                // IAP data is sparse back-calculated LMS -- z-scores are meaningless.
+                // Lock to percentile-only for pure IAP.
+                // IAP+WHO age-aware locking is handled in the set:weeks handler.
+                $('[name="pctz"]').closest(".toggle-button-wrap").toggleClass("disabled", isIAP);
+                if (isIAP) { GC.App.setPCTZ("pct"); }
+
+                // Auto-select the most appropriate tab when switching datasets
+                if (isIAP) {
+                    // IAP only starts at 5yr — jump straight to 5-18yr tab
+                    setTimeout(function() {
+                        var iapTab = $('input[name="time-range"][value="260.892857143:939.214285714"]');
+                        if (!iapTab.is(":checked")) {
+                            iapTab.prop("checked", true).trigger("change");
+                        }
+                    }, 0);
+                } else if (isIAPWHO) {
+                    // Combined: default to 0-5yr so both segments are visible initially
+                    setTimeout(function() {
+                        var combinedTab = $('input[name="time-range"][value="0:260.892857143"]');
+                        if (!combinedTab.is(":checked")) {
+                            combinedTab.prop("checked", true).trigger("change");
+                        }
+                    }, 0);
+                } else if (isWHOOnly) {
+                    // WHO: default to 0-6m if nothing pre-5yr is selected
+                    var currentEnd = parseFloat(($('input[name="time-range"]:checked').val() || "0:0").split(":")[1]);
+                    if (currentEnd > 260.9) {
+                        $('input[name="time-range"][value="0:26.08928571428572"]')
+                            .prop("checked", true).trigger("change");
+                    }
+                }
+                // ─────────────────────────────────────────────────────────────────────────
             }
 
             // Swap dataSets
@@ -1092,7 +1200,7 @@
 
             // Initial DS selection --------------------------------------------
             var ds;
-            if (PATIENT.getCurrentAge().getYears() > 2) {
+            if (PATIENT.getCurrentAge().getYears() >= 5) {
                 ds = GC.chartSettings.defaultChart;
             } else {
                 if (PATIENT.isPremature()) {
@@ -1101,26 +1209,25 @@
                     ds = GC.chartSettings.defaultBabyChart;
                 }
             }
-            $("#primary-ds").menuButton("value", ds);
 
-            PRIMARY_CHART_TYPE = $("#primary-ds").bind("menubuttonchange", function(e, data) {
+            // Bind change events first (but don't read the current value yet)
+            $("#primary-ds").bind("menubuttonchange", function(e, data) {
                 PRIMARY_CHART_TYPE = data.value;
                 onDataSetsChange();
                 BROADCASTER.trigger("set:primaryData", [data.value]);
-            }).menuButton("value");
+            });
 
-            CORRECTION_CHART_TYPE = $("#secondary-ds").bind("menubuttonchange", function(e, data) {
+            $("#secondary-ds").bind("menubuttonchange", function(e, data) {
                 CORRECTION_CHART_TYPE = data.value;
                 onDataSetsChange();
                 BROADCASTER.trigger("set:secondaryData", [data.value]);
-            }).menuButton("value");
-
-            $("#the-tab").toggleClass("double", !!PRIMARY_CHART_TYPE && !!CORRECTION_CHART_TYPE);
-
-            onDataSetsChange();
+            });
 
             // Automatically disable some dataset options if their data is not available
             // =============================================================
+            // IMPORTANT: run hasData BEFORE setting the default value so that
+            // the desired option (e.g. IAP) is not disabled and then silently
+            // rejected by the widget when we call menuButton("value", ds) below.
             function hasData(src) {
                 var patient  = GC.App.getPatient(),
                     startAge = 0,
@@ -1146,6 +1253,17 @@
                 this.setIndexEnabled(o.index, hasData(o.value));
             });
             // =============================================================
+
+            // NOW set the desired default — all options are correctly
+            // enabled/disabled so the widget will accept the value.
+            $("#primary-ds").menuButton("value", ds);
+            PRIMARY_CHART_TYPE = $("#primary-ds").menuButton("value");
+
+            CORRECTION_CHART_TYPE = $("#secondary-ds").menuButton("value");
+
+            $("#the-tab").toggleClass("double", !!PRIMARY_CHART_TYPE && !!CORRECTION_CHART_TYPE);
+
+            onDataSetsChange();
 
 
 

@@ -270,7 +270,7 @@
 
                     age : PATIENT.getCurrentAge()
                 },
-                src    = out.age.getYears() > 2 ? "CDC" : "WHO",
+                src    = out.age.getYears() >= 5 ? "IAP" : "WHO",
                 gender = PATIENT.gender;
 
             $.each({
@@ -974,10 +974,16 @@
                 lastHeightEntry = PATIENT.getLastEnryHaving("lengthAndStature"),
                 lastBMIEntry    = PATIENT.getLastEnryHaving("bmi"),
                 prevWeightEntry,
-                dataSet = GC.DATA_SETS.CDC_WEIGHT,
+                useIAP  = PATIENT.getCurrentAge().getYears() >= 5,
+                src     = useIAP ? "IAP" : "WHO",
+                dataSet,
                 weightPctNow,
                 weightPctPrev,
-                healthyWeightMin, healthyWeightMax, weightPctDiff, obesity;
+                healthyWeightMin, healthyWeightMax, weightPctDiff, obesity,
+                // IAP cutoffs: 75th = overweight, 90th = obese
+                // WHO cutoffs: 85th = overweight, 95th = obese
+                cutoffOverweight = useIAP ? 75 : 85,
+                cutoffObese      = useIAP ? 90 : 95;
 
             out.name = PATIENT.name;
 
@@ -991,6 +997,10 @@
             }
 
             else {
+                // Resolve the weight dataset via GC.getDataSet so it uses the
+                // same lookup path as the chart renderer (handles arrays of
+                // datasets, age-range intersection, etc.)
+                dataSet = GC.getDataSet(src, "WEIGHT", PATIENT.gender, 0, lastWeightEntry.agemos);
 
                 weightPctNow = GC.findPercentileFromX(
                     lastWeightEntry.weight,
@@ -1015,12 +1025,13 @@
                 }
 
                 if (lastBMIEntry && lastBMIEntry.agemos >= 24) {
-                    obesity = GC.findPercentileFromX(
+                    var bmiDataSet = GC.getDataSet(src, "BMI", PATIENT.gender, 0, lastBMIEntry.agemos);
+                    obesity = bmiDataSet ? GC.findPercentileFromX(
                         lastBMIEntry.bmi,
-                        GC.DATA_SETS.CDC_BMI,
+                        bmiDataSet,
                         PATIENT.gender,
                         lastBMIEntry.agemos
-                    ) * 100;
+                    ) * 100 : NaN;
 
                     if (isNaN(obesity) || !isFinite(obesity)) {
                         obesity = weightPctNow;
@@ -1038,7 +1049,7 @@
                 );
 
                 healthyWeightMax = GC.findXFromPercentile(
-                    0.85,
+                    useIAP ? 0.75 : 0.85,
                     dataSet,
                     PATIENT.gender,
                     lastWeightEntry.agemos
@@ -1055,16 +1066,16 @@
                     } else {
                         out.stateGoingTo = WEIGHT_TRENDS.IMPROVING;
                     }
-                } else if (obesity <= 85) {
+                } else if (obesity <= cutoffOverweight) {
                     out.state = WEIGHT_STATES.HEALTHY;
                     if (weightPctDiff < -1 && weightPctNow <= 10) {
                         out.stateGoingTo = WEIGHT_TRENDS.RISK_FOR_UNDERWEIGHT;
-                    } else if (weightPctDiff > -1 && weightPctNow > 80) {
+                    } else if (weightPctDiff > -1 && weightPctNow > (cutoffOverweight - 5)) {
                         out.stateGoingTo = WEIGHT_TRENDS.RISK_FOR_OVERWEIGHT;
                     } else {
                         out.stateGoingTo = WEIGHT_TRENDS.NONE;
                     }
-                } else if ( obesity <= 95) {
+                } else if (obesity <= cutoffObese) {
                     out.state = WEIGHT_STATES.OVERWEIGHT;
                     if (weightPctDiff < -1) {
                         out.stateGoingTo = WEIGHT_TRENDS.IMPROVING;

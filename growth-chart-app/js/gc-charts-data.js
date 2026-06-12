@@ -14,14 +14,16 @@ if (!GC) {
 (function ($) {
     "use strict";
 
-
-    //TODO: call the load from file function above.
-
-
     /**
-     * @param {String} src  CDC|WHO|BB|DS...
-     * @param {String} type LENGTH|WEIGHT|HEADC|BMI
-     * @param {String} type male|female
+     * Returns the dataset object for the given source/type/gender/age range.
+     *
+     * src examples: "WHO", "IAP", "CDC", "IAP+WHO"
+     * "IAP+WHO_LENGTH", "IAP+WHO_WEIGHT", "IAP+WHO_BMI" are real keys baked
+     * directly into GCCurveDataJSON.txt — no runtime stitching needed.
+     *
+     * @param {String} src         WHO|IAP|CDC|IAP+WHO|...
+     * @param {String} type        LENGTH|WEIGHT|HEADC|BMI
+     * @param {String} gender      male|female
      * @param {Number} startAgeMos
      * @param {Number} endAgeMos
      */
@@ -29,23 +31,20 @@ if (!GC) {
 
         var tmp, ds, i, range, a = 0, n, out = null;
 
-        tmp = GC.DATA_SETS[src+"_"+type];
+        tmp = GC.DATA_SETS[src + "_" + type];
         if ( !tmp ) {
-            if (type == "LENGTH") {tmp = GC.DATA_SETS[src+"_STATURE"];}
-            if ( !tmp ) {return null;}
+            if (type === "LENGTH") { tmp = GC.DATA_SETS[src + "_STATURE"]; }
+            if ( !tmp ) { return null; }
         }
 
-        // Convert to array of data sets if needed
-        if ( Object.prototype.toString.call( tmp ) != "[object Array]" ) {
+        // Convert single dataset object to array for uniform handling
+        if ( Object.prototype.toString.call( tmp ) !== "[object Array]" ) {
             tmp = [ tmp ];
         }
 
-        //out = tmp[0];
-
-        // Find the data set that intersects the most the given time range
-        // for the given gender
+        // Pick the dataset that covers the most of the requested age range
         for ( i = tmp.length - 1; i >= 0; i-- ) {
-            ds = tmp[i];
+            ds    = tmp[i];
             range = GC.getDataSetAgeRange( ds )[ gender ];
 
             if ( range.min <= endAgeMos && range.max >= startAgeMos ) {
@@ -55,7 +54,7 @@ if (!GC) {
                     Math.max(range.min - startAgeMos, 0);
 
                 if ( n > a ) {
-                    a = n;
+                    a   = n;
                     out = ds;
                 }
             }
@@ -65,62 +64,43 @@ if (!GC) {
     };
 
     /**
-     * @param {Objects} ds One of the item in GC.DATA_SETS
-     * @returns Object like
-     * {
-     *     "male"   : { min : 0, max : 120 },
-     *     "female" : { min : 0, max : 100 }
-     * }
+     * Returns the age range covered by a dataset for each gender.
+     * Result is cached on the dataset object itself.
+     *
+     * @param  {Object} ds  One entry from GC.DATA_SETS
+     * @returns {Object}    { male: {min, max}, female: {min, max} }
      */
     GC.getDataSetAgeRange = function( ds ) {
 
-        function sortByAge(a, b) {
-            return a.Agemos - b.Agemos;
-        }
+        function sortByAge(a, b) { return a.Agemos - b.Agemos; }
 
         if ( !ds.ageRange ) {
 
             ds.ageRange = {
-                "male"   : { min : null, max : null },
-                "female" : { min : null, max : null }
+                "male"   : { min: null, max: null },
+                "female" : { min: null, max: null }
             };
 
-            var genders = { male : 1, female : 1 },
-                currentGender = null,
-                data,
-                len,
-                type;
+            var genders = { male: 1, female: 1 },
+                currentGender, data, len, type, min, max, x, group;
 
             for ( currentGender in genders ) {
                 data = ds.data[currentGender];
                 type = Object.prototype.toString.call(data);
 
-                // Entries are listed directly under the gender. That seems to
-                // be the case for LMS data sets
-                if ( type == "[object Array]" ) {
+                if ( type === "[object Array]" ) {
                     data.sort(sortByAge);
-
                     len = data.length;
-
-                    ds.ageRange[currentGender].min = data[0      ].Agemos;
+                    ds.ageRange[currentGender].min = data[0].Agemos;
                     ds.ageRange[currentGender].max = data[len - 1].Agemos;
                 }
-
-                // Standart deviations, percentiles or something else - the
-                // label doesn't really matter. What needs to be done is to
-                // find min/max from all the groups
-                else if ( type == "[object Object]" ) {
-                    var min = Number.MAX_VALUE,
-                        max = Number.MIN_VALUE,
-                        x,
-                        group;
+                else if ( type === "[object Object]" ) {
+                    min = Number.MAX_VALUE;
+                    max = Number.MIN_VALUE;
                     for ( x in data ) {
                         group = data[x];
-
                         group.sort(sortByAge);
-
                         len = group.length;
-
                         min = Math.min(min, group[0].Agemos);
                         max = Math.max(max, group[len - 1].Agemos);
                     }
@@ -133,12 +113,15 @@ if (!GC) {
         return ds.ageRange;
     };
 
+    /**
+     * Adjusts premature dataset age entries for the patient's gestational age.
+     */
     GC.translatePreemieDatasets = function(patient) {
         if (patient.weeker) {
-            var diff = patient.weeker/4.348214285714286;
+            var diff = patient.weeker / 4.348214285714286;
             $.each(GC.DATA_SETS, function(type, ds) {
                 if (ds.isPremature) {
-                    $.each(['male', 'female'], function(i, gender) {
+                    $.each(["male", "female"], function(i, gender) {
                         $.each(ds.data[gender] || [], function(j, rec) {
                             rec.Agemos -= diff;
                         });
@@ -147,6 +130,5 @@ if (!GC) {
             });
         }
     };
-
 
 }(jQuery));

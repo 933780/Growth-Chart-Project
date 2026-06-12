@@ -141,6 +141,38 @@ window.GC = window.GC || {};
         return null;
     };
 
+    // Same as findLMSParameters, but keyed on "Length" instead of "Agemos".
+    // Used only for datasets with xAxis === "length" (e.g. WHO_WFL), so it
+    // does not affect any age-keyed dataset/chart.
+    var findLMSParametersByLength = function (dataSet, gender, lengthVal) {
+
+        var data = dataSet.data[gender],
+            len = data.length,
+            weight, i;
+
+        lengthVal = GC.Util.floatVal(lengthVal);
+
+        for (i = 0; i < len; i++) {
+            if (lengthVal === data[i].Length) {
+                return {
+                    L:   data[i].L,
+                    M:   data[i].M,
+                    S:   data[i].S
+                };
+            }
+            else if (i < len-1 && lengthVal > data[i].Length && lengthVal <= data[i+1].Length) {
+                weight = (lengthVal-data[i].Length) / (data[i+1].Length-data[i].Length);
+                return {
+                    L:   mean(data[i].L, data[i+1].L, weight),
+                    M:   mean(data[i].M, data[i+1].M, weight),
+                    S:   mean(data[i].S, data[i+1].S, weight)
+                };
+            }
+        }
+
+        return null;
+    };
+
     /*
     // Adapted from: http://www.cdc.gov/growthcharts/percentile_data_files.htm
     // On 2012-11-28
@@ -202,6 +234,74 @@ window.GC = window.GC || {};
     GC.findPercentileFromX = function(X, dataSet, gender, ageMonths) {
         var Z = GC.findZFromX(X, dataSet, gender, ageMonths);
         return Math.normsdist(Z);
+    };
+
+    /**
+     * Generates an array of {x, y} points for a given percentile curve
+     * across the specified age range using LMS interpolation.
+     *
+     * @param {Object} dataSet    - Dataset object with .data[gender] array of LMS entries
+     * @param {String} gender     - "male" | "female"
+     * @param {Number} percentile - e.g. 0.5 for 50th percentile
+     * @param {Number} startAge   - start age in months
+     * @param {Number} endAge     - end age in months
+     * @returns {Array}           - [{x: agemos, y: value}, ...]
+     */
+    GC.generateCurveSeries = function(dataSet, gender, percentile, startAge, endAge) {
+        var series = [],
+            data   = dataSet.data[gender],
+            len    = data.length,
+            isLengthKeyed = dataSet.xAxis === "length",
+            i, age, val, Z, params, L, M, S, x;
+
+        for (i = 0; i < len; i++) {
+            if (isLengthKeyed) {
+                x = data[i].Length;
+                if (x < startAge || x > endAge) { continue; }
+
+                params = findLMSParametersByLength(dataSet, gender, x);
+                if (!params) { continue; }
+
+                Z = Math.normsinv(percentile);
+                L = params.L; M = params.M; S = params.S;
+                val = (L !== 0) ? M * Math.pow(1 + L * S * Z, 1/L) : M * Math.exp(S * Z);
+
+                if (val !== undefined && !isNaN(val)) {
+                    series.push({ x: x, y: val });
+                }
+            } else {
+                age = data[i].Agemos;
+                if (age < startAge || age > endAge) { continue; }
+
+                val = GC.findXFromPercentile(percentile, dataSet, gender, age);
+                if (val !== undefined && !isNaN(val)) {
+                    series.push({ x: age, y: val });
+                }
+            }
+        }
+
+        return series;
+    };
+
+    /**
+     * Converts a raw points array (used by "points"-type datasets) to
+     * the {x, y} format expected by the chart rendering layer.
+     *
+     * @param {Array}  pointsArray - Array of {Agemos, value} objects
+     * @param {Number} startAge    - start age in months
+     * @param {Number} endAge      - end age in months
+     * @returns {Array}            - [{x: agemos, y: value}, ...]
+     */
+    GC.convertPointsSet = function(pointsArray, startAge, endAge) {
+        var series = [];
+        var i, point;
+        for (i = 0; i < pointsArray.length; i++) {
+            point = pointsArray[i];
+            if (point.Agemos >= startAge && point.Agemos <= endAge) {
+                series.push({ x: point.Agemos, y: point.value });
+            }
+        }
+        return series;
     };
 
 }());

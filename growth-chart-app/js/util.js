@@ -1069,23 +1069,37 @@ if ( !Array.prototype.indexOf ) {
     }
 
     function getCurvesData( dataSet, startAge, endAge ) {
+
         if ( !GC.DATA_SETS.hasOwnProperty(dataSet) ) {
-            //throw "No such data-set '" + dataSet + "'";
             return [];
         }
+
+        // IAP percentile sets differ from WHO/CDC defaults.
+        // IAP+WHO_* datasets use the same sets as their IAP counterpart.
+        var IAP_BMI_PCTS    = [0.03, 0.05, 0.10, 0.25, 0.50, 0.75, 0.97];
+        var IAP_HW_PCTS     = [0.03, 0.10, 0.25, 0.50, 0.75, 0.90, 0.97];
 
         var gender   = GC.App.getGender(),
             data     = [],
             set      = GC.DATA_SETS[dataSet],
-            pcts     = GC.Preferences.prop("percentiles"),
+            pcts = (dataSet === "IAP_BMI"     || dataSet === "IAP+WHO_BMI")
+                ? IAP_BMI_PCTS
+                : (dataSet === "IAP_LENGTH"   || dataSet === "IAP_WEIGHT" ||
+                   dataSet === "IAP+WHO_LENGTH" || dataSet === "IAP+WHO_WEIGHT")
+                ? IAP_HW_PCTS
+                : GC.Preferences.prop("percentiles"),
             label;
 
         if ( startAge === undefined ) {
-            startAge = Math.max(GC.App.getStartAgeMos() - 1, 0);
+            startAge = (set.xAxis === "length")
+                ? -Infinity
+                : Math.max(GC.App.getStartAgeMos() - 1, 0);
         }
 
         if ( endAge === undefined ) {
-            endAge = GC.App.getEndAgeMos() + 1;
+            endAge = (set.xAxis === "length")
+                ? Infinity
+                : GC.App.getEndAgeMos() + 1;
         }
         //console.log(startAge, " - ", endAge);
 

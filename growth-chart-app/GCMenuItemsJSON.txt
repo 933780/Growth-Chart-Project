@@ -2,5 +2,13 @@
     {
         "label": "WHO",
         "value": "WHO"
+    },
+    {
+        "label": "IAP",
+        "value": "IAP"
+    },
+    {
+        "label": "IAP+WHO",
+        "value": "IAP+WHO"
     }
 ]

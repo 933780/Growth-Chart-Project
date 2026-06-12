@@ -330,6 +330,13 @@
             return this;
         },
 
+        // Suppress the right-end percentile/z-score labels that the base Chart
+        // draws at the last point of each curve. WFL uses length as X, so those
+        // labels render inside the chart area rather than at a right-axis edge.
+        drawDataLineLabel : function() {
+            return this;
+        },
+
         // Override draw to skip rendering if there's no patient data or dataSet not set
         draw : function() {
             var patient = GC.App.getPatient();

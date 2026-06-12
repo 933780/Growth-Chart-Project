@@ -55,7 +55,8 @@
         getUnits : function()
         {
             var metrics = GC.App.getMetrics(),
-                out = this.dataSet ? GC.DATA_SETS[this.dataSet].units : "cm";
+                out = (this.dataSet && GC.DATA_SETS[this.dataSet]) ?
+                    GC.DATA_SETS[this.dataSet].units : "cm";
 
             if ( out == "cm" && metrics == "eng" ) {
                 out = "in";
@@ -304,9 +305,6 @@
 
                 txt += GC.Util.format(o.height, {type : "height"});
 
-                txt += GC.App.getPCTZ() == "pct" ?
-                    " (" + GC.Util.format(o.percentile * 100, {type : "percentile"}) + ")" :
-                    " (" + GC.Util.format(Math.normsinv(o.percentile), {type : "zscore"}) + ")";
 
                 ttSettings = {
                     text : txt,

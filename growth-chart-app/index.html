@@ -259,34 +259,46 @@
 
             <div id="time-ranges">
                 <div class="row">
-                    <div class="cell angle-right">
+                    <div class="cell angle-right" data-tab-group="who-only">
                         <label>
                             <input type="radio" name="time-range" value="0:13">
                             0 – 13 <span data-translatecontent="STR_19"></span>
                         </label>
                     </div>
-                    <div class="cell angle-left angle-right">
+                    <div class="cell angle-left angle-right" data-tab-group="who-only">
                         <label>
                             <input type="radio" name="time-range" value="0:26.08928571428572" checked>
                             0 – 6 <span data-translatecontent="STR_17"></span>
                         </label>
                     </div>
-                    <div class="cell angle-left">
+                    <div class="cell angle-left" data-tab-group="who-only">
                         <label>
                             <input type="radio" name="time-range" value="0:104.3571428571429">
                             0 – 2 <span data-translatecontent="STR_15"></span>
                         </label>
                     </div>
-                    <div class="cell">
+                    <div class="cell" data-tab-group="who-only">
                         <label>
                             <input type="radio" name="time-range" value="0:1043.571428571429">
                             0 – 20 <span data-translatecontent="STR_15"></span>
                         </label>
                     </div>
+                    <div class="cell" data-tab-group="iapwho-range" style="display:none">
+                        <label>
+                            <input type="radio" name="time-range" value="0:260.892857143">
+                            0 – 5 <span data-translatecontent="STR_15"></span>
+                        </label>
+                    </div>
+                    <div class="cell" data-tab-group="iap-range" style="display:none">
+                        <label>
+                            <input type="radio" name="time-range" value="260.892857143:939.214285714">
+                            5 – 18 <span data-translatecontent="STR_15"></span>
+                        </label>
+                    </div>
                     <div class="cell" style="width:9px">
                         <span class="vertical-divider" style="margin-left:4px;margin-right:4px"></span>
                     </div>
-                    <div class="cell btn" style="width:120px;white-space:nowrap;" id="btn-fit-to-age" onclick="GC.App.fitToData();">
+                    <div class="cell btn" style="width:120px;white-space:nowrap;display:none;" id="btn-fit-to-age" onclick="GC.App.fitToData();">
                         <label>
                             <input type="radio" name="time-range" value="0:1">
                             <span data-translatecontent="STR_3050"></span>

@@ -20,43 +20,84 @@
     />
   </div>
 
-  <!-- Lookup spinner
-  <div *ngIf="isLooking" class="age-preview">Looking up patient…</div>
+  <div *ngIf="isLooking" class="age-preview">Looking up patient...</div>
 
-  <!-- Patient preview card 
-  <div *ngIf="patient" class="patient-card">
-    <div class="patient-card__row">
-      <span class="patient-card__label">UHID</span>
-      <span class="patient-card__value">{{ uhid }}</span>
+  <!-- Parental heights - shown once patient is found -->
+  <div *ngIf="patient" class="parental-heights">
+
+    <div class="parental-heights__header">
+      <span class="section-label" style="margin:0;border:none;">Parental Heights</span>
+      <div class="unit-toggle">
+        <button [class.active]="heightUnit === 'cm'" (click)="setHeightUnit('cm')">cm</button>
+        <button [class.active]="heightUnit === 'ft'" (click)="setHeightUnit('ft')">ft / in</button>
+      </div>
     </div>
-    <div class="patient-card__row">
-      <span class="patient-card__label">OP Number</span>
-      <span class="patient-card__value">{{ patient.opnumber || '—' }}</span>
+
+    <!-- Father + Mother side by side -->
+    <div class="parent-row">
+
+      <div class="form-group" style="margin:0">
+        <label>Father's Height</label>
+        <div class="height-input-group" *ngIf="heightUnit === 'cm'">
+          <input type="number" [(ngModel)]="fatherCm"
+            (ngModelChange)="onParentHeightChange()"
+            placeholder="170" min="100" max="220" />
+          <span class="unit-badge">cm</span>
+        </div>
+        <div class="height-input-group" *ngIf="heightUnit === 'ft'">
+          <input type="number" [(ngModel)]="fatherFt"
+            (ngModelChange)="onParentHeightChange()"
+            placeholder="5" min="3" max="7" class="input-ftpart" />
+          <span class="unit-badge">ft</span>
+          <input type="number" [(ngModel)]="fatherIn"
+            (ngModelChange)="onParentHeightChange()"
+            placeholder="7" min="0" max="11" class="input-ftpart" />
+          <span class="unit-badge">in</span>
+        </div>
+      </div>
+
+      <div class="form-group" style="margin:0">
+        <label>Mother's Height</label>
+        <div class="height-input-group" *ngIf="heightUnit === 'cm'">
+          <input type="number" [(ngModel)]="motherCm"
+            (ngModelChange)="onParentHeightChange()"
+            placeholder="158" min="100" max="220" />
+          <span class="unit-badge">cm</span>
+        </div>
+        <div class="height-input-group" *ngIf="heightUnit === 'ft'">
+          <input type="number" [(ngModel)]="motherFt"
+            (ngModelChange)="onParentHeightChange()"
+            placeholder="5" min="3" max="7" class="input-ftpart" />
+          <span class="unit-badge">ft</span>
+          <input type="number" [(ngModel)]="motherIn"
+            (ngModelChange)="onParentHeightChange()"
+            placeholder="2" min="0" max="11" class="input-ftpart" />
+          <span class="unit-badge">in</span>
+        </div>
+      </div>
+
     </div>
-    <div class="patient-card__row">
-      <span class="patient-card__label">Date of Birth</span>
-      <span class="patient-card__value">{{ formatDob(patient.dob) }}</span>
+
+    <!-- MPH preview -->
+    <div *ngIf="mph !== null" class="mph-preview">
+      MPH <strong>{{ mph | number:'1.1-1' }} cm</strong>
+      <span class="mph-range">· target {{ mphLow | number:'1.0-0' }}-{{ mphHigh | number:'1.0-0' }} cm</span>
     </div>
-    <div class="patient-card__row">
-      <span class="patient-card__label">Gender</span>
-      <span class="patient-card__value">{{ patient.gender | titlecase }}</span>
-    </div>
-  </div> -->
+
+  </div>
 
   <!-- Feedback -->
   <small *ngIf="lookupMessage" [class]="patient ? 'age-preview' : 'field-error'">
     {{ lookupMessage }}
   </small>
-
   <div *ngIf="errorMessage" class="error-box">{{ errorMessage }}</div>
 
-  <!-- Action button — enabled only when a patient is found -->
   <button
     class="btn-primary"
     (click)="openChart()"
     [disabled]="!patient || isLoading"
   >
-    {{ isLoading ? 'Loading…' : 'Open Growth Chart' }}
+    {{ isLoading ? 'Loading...' : 'Open Growth Chart' }}
   </button>
 
 </div>

@@ -829,37 +829,15 @@ window.GC = window.GC || {};
             !this.familyHistory.mother.isBio) {
             return null;
         }
-        var midHeight
+        var midHeight;
         if (this.gender === "male")
-            midHeight = GC.Util.round((this.familyHistory.father.height + this.familyHistory.mother.height + 13) / 2);
+            midHeight = (this.familyHistory.father.height + this.familyHistory.mother.height + 13) / 2;
         else
-            midHeight = GC.Util.round((this.familyHistory.father.height + this.familyHistory.mother.height - 13) / 2);
-
-        var dataSet    = GC.DATA_SETS.CDC_STATURE;
-        var data       = dataSet.data[this.gender];
-        var lastAgeMos = GC.Util.findMinMax(data, "Agemos").max;
-
-        if ( lastAgeMos < forAgemos ) {
-            return null;
-        }
-
-        var pctLast = GC.findPercentileFromX(
-            midHeight,
-            dataSet,
-            this.gender,
-            lastAgeMos
-        );
-
-        var nom = GC.findXFromPercentile(
-            pctLast,
-            dataSet,
-            this.gender,
-            forAgemos || 12 * 20
-        );
+            midHeight = (this.familyHistory.father.height + this.familyHistory.mother.height - 13) / 2;
 
         return {
-            height     : GC.Util.floatVal(nom, midHeight),
-            percentile : pctLast,
+            height     : midHeight,
+            percentile : null,
             title      : GC.str("STR_32") // Mid. Parental Height
         };
     };
@@ -876,32 +854,10 @@ window.GC = window.GC || {};
             return null;
         }
 
-        var dataSet       = GC.DATA_SETS.CDC_STATURE;
-        var data          = dataSet.data[this.gender];
-        var lastAgeMos    = GC.Util.findMinMax(data, "Agemos").max;
-
-        if ( lastAgeMos < lastHeightEntry.agemos ) {
-            return null;
-        }
-
-        var pctLast = GC.findPercentileFromX(
-            boneAgeHeight,
-            dataSet,
-            this.gender,
-            lastAgeMos
-        );
-
-        var nom = GC.findXFromPercentile(
-            pctLast,
-            dataSet,
-            this.gender,
-            forAgemos || 12 * 20
-        );
-
         return {
-            height     : nom,
-            percentile : pctLast,
-            title      : GC.str("STR_34") // Mid. Parental Height
+            height     : boneAgeHeight,
+            percentile : null,
+            title      : GC.str("STR_34") // Bone Age Adjusted Height
         };
     };
 
@@ -913,30 +869,15 @@ window.GC = window.GC || {};
             return null;
         }
 
-        var dataSet    = GC.DATA_SETS.CDC_STATURE;
-        var data       = dataSet.data[this.gender];
-        var lastAgeMos = GC.Util.findMinMax(data, "Agemos").max;
-
-        if ( lastAgeMos < lastHeightEntry.agemos ) {
-            return null;
-        }
-
         var pctLast = GC.findPercentileFromX(
             lastHeightEntry.lengthAndStature,
-            dataSet,
+            GC.DATA_SETS.CDC_STATURE,
             this.gender,
             lastHeightEntry.agemos
         );
 
-        var nom = GC.findXFromPercentile(
-            pctLast,
-            dataSet,
-            this.gender,
-            forAgemos || 12 * 20
-        );
-
         return {
-            height     : nom,
+            height     : lastHeightEntry.lengthAndStature,
             percentile : pctLast,
             title      : GC.str("STR_33") // Nominal Height
         };

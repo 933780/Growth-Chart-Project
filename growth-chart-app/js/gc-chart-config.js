@@ -60,12 +60,12 @@ window.GC = window.GC || {};
     // =========================================================================
     var settings = {
         isParentTabShown : true,
-        hidePatientHeader: true,
+        hidePatientHeader: false,
         hideAppPreferences: false,
         hideGCComparison: true,
         hideAddData: false,
-        defaultChart : "WHO", // 2+ years
-        defaultBabyChart : "WHO", // 0 - 2 years
+        defaultChart : "IAP", // 5+ years
+        defaultBabyChart : "WHO", // 0 - 5 years
         defaultPrematureChart : "WHO", // premature
 
         widthType  : "auto",// or "fixed"
