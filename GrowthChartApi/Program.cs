@@ -1,36 +1,10 @@
 using System.Text.Json;
-using Azure.Identity;
-using Azure.Security.KeyVault.Secrets;
 using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // ─── Load local secrets (gitignored) ─────────────────────────────────────────
 builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true);
-
-// ─── Azure Key Vault (feature flag) ──────────────────────────────────────────
-// Set "UseAzureKeyVault": true in appsettings.json to fetch secrets from vault.
-// When false, falls back to appsettings.Local.json connection string.
-var useKeyVault = builder.Configuration.GetValue<bool>("UseAzureKeyVault");
-string connStr;
-
-if (useKeyVault)
-{
-    var keyVaultUrl  = builder.Configuration["AzureKeyVault:Url"]
-        ?? throw new InvalidOperationException("Missing AzureKeyVault:Url in appsettings.json");
-    var secretName   = builder.Configuration["AzureKeyVault:SecretName"]
-        ?? throw new InvalidOperationException("Missing AzureKeyVault:SecretName in appsettings.json");
-
-    var client = new SecretClient(new Uri(keyVaultUrl), new DefaultAzureCredential());
-    var secret = await client.GetSecretAsync(secretName);
-    connStr    = secret.Value.Value;
-}
-else
-{
-    connStr = builder.Configuration.GetConnectionString("Postgres")
-        ?? throw new InvalidOperationException(
-               "Missing ConnectionStrings:Postgres in appsettings.Local.json");
-}
 
 // ─── JSON camelCase ───────────────────────────────────────────────────────────
 builder.Services.ConfigureHttpJsonOptions(options =>
@@ -59,6 +33,11 @@ builder.Services.AddSwaggerGen(c =>
         Description = "API for fetching patient growth data from digital.p_getopvitals_growthchart"
     });
 });
+
+// ─── Postgres ─────────────────────────────────────────────────────────────────
+var connStr = builder.Configuration.GetConnectionString("Postgres")
+    ?? throw new InvalidOperationException(
+           "Missing ConnectionStrings:Postgres in appsettings.Local.json");
 
 var app = builder.Build();
 
@@ -203,8 +182,8 @@ static async Task<ProcessedPatientData?> FetchFromDb(NpgsqlConnection conn, stri
             {
                 // IsBio = true only when real DB value present
                 // Defaults: WHO/CDC population averages (father 170cm, mother 158cm)
-                { "father", new() { Height = fatherHeight ?? 170.0, IsBio = fatherHeight.HasValue } },
-                { "mother", new() { Height = motherHeight ?? 158.0, IsBio = motherHeight.HasValue } }
+                { "father", new() { Height = fatherHeight, IsBio = fatherHeight.HasValue } },
+                { "mother", new() { Height = motherHeight, IsBio = motherHeight.HasValue } }
             }
         };
     }
@@ -344,7 +323,70 @@ app.MapGet("/api/health", async () =>
 .WithDescription("Runs SELECT 1 against Postgres. Returns 200 if connected.")
 .Produces(200).Produces(500);
 
-// Debug endpoint removed — returned DB internals here previously; removed for safety.
+// GET /api/debug/{opnumber} ⚠️ REMOVE IN PRODUCTION
+app.MapGet("/api/debug/{opnumber}", async (string opnumber) =>
+{
+    var log = new List<string>();
+    try
+    {
+        await using var conn = await OpenDb(connStr);
+        log.Add("✅ DB connection OK");
+
+        await using var tx = await conn.BeginTransactionAsync();
+        log.Add("✅ Transaction started");
+
+        try
+        {
+            await using var callCmd = new NpgsqlCommand(
+                "CALL digital.p_getopvitals_growthchart(@p_uhid, 'mycursor'::refcursor)", conn, tx);
+            callCmd.Parameters.AddWithValue("p_uhid", opnumber.Trim());
+            await callCmd.ExecuteNonQueryAsync();
+            log.Add("✅ CALL OK — cursor name: 'mycursor'");
+        }
+        catch (Exception ex)
+        {
+            await tx.RollbackAsync();
+            log.Add($"❌ CALL failed: {ex.Message}");
+            return Results.Json(new { steps = log, hint = "Procedure name/schema/param wrong, or no EXECUTE permission." });
+        }
+
+        var rows     = new List<Dictionary<string, object?>>();
+        var colNames = new List<string>();
+        try
+        {
+            await using var fetchCmd = new NpgsqlCommand("FETCH ALL FROM \"mycursor\"", conn, tx);
+            await using var reader   = await fetchCmd.ExecuteReaderAsync();
+            for (int i = 0; i < reader.FieldCount; i++) colNames.Add(reader.GetName(i));
+            log.Add($"✅ FETCH OK — columns: [{string.Join(", ", colNames)}]");
+            while (await reader.ReadAsync())
+            {
+                var row = new Dictionary<string, object?>();
+                for (int i = 0; i < reader.FieldCount; i++)
+                    row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i)?.ToString();
+                rows.Add(row);
+            }
+            log.Add($"✅ Rows: {rows.Count}");
+            await reader.CloseAsync();
+        }
+        catch (Exception ex)
+        {
+            await tx.RollbackAsync();
+            log.Add($"❌ FETCH failed: {ex.Message}");
+            return Results.Json(new { steps = log, hint = "Cursor fetch failed." });
+        }
+
+        await tx.CommitAsync();
+        return Results.Json(new { steps = log, columns = colNames, rowCount = rows.Count, firstRow = rows.FirstOrDefault() });
+    }
+    catch (Exception ex)
+    {
+        log.Add($"❌ DB connection failed: {ex.Message}");
+        return Results.Json(new { steps = log }, statusCode: 500);
+    }
+})
+.WithName("DebugOpNumber").WithTags("Debug")
+.WithSummary("⚠️ Debug endpoint — REMOVE IN PRODUCTION")
+.WithDescription("Pass an OP Number (e.g. OP1615352). Tests the CALL and FETCH steps separately. Shows exact columns returned by the cursor.");
 
 app.Run();
 

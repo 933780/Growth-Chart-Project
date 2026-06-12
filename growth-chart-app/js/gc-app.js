@@ -1199,8 +1199,17 @@
             });
 
             // Initial DS selection --------------------------------------------
+            // Use age at last recorded visit rather than current age, so that
+            // a patient whose last visit was under 5 gets WHO even if they are
+            // now older than 5 today.
             var ds;
-            if (PATIENT.getCurrentAge().getYears() >= 5) {
+            var lastEntry = PATIENT.getLastEnryHaving("lengthAndStature") ||
+                            PATIENT.getLastEnryHaving("weight");
+            var ageAtLastVisitYears = lastEntry
+                ? lastEntry.agemos / 12
+                : PATIENT.getCurrentAge().getYears();
+
+            if (ageAtLastVisitYears >= 5) {
                 ds = GC.chartSettings.defaultChart;
             } else {
                 if (PATIENT.isPremature()) {

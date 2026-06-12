@@ -304,6 +304,18 @@ GC.get_data = function() {
             .then(function(processedData) {
                 console.log('Loaded from .NET backend:', processedData);
                 var v = processedData.vitals || {};
+
+                // Use backend family history as base, then override with
+                // any heights the Angular form passed as URL params
+                var fh = processedData.familyHistory || {
+                    father: { height: null, isBio: false },
+                    mother: { height: null, isBio: false }
+                };
+                var fatherParam = parseFloat(urlParams.get("fatherHeight"));
+                var motherParam = parseFloat(urlParams.get("motherHeight"));
+                if (!isNaN(fatherParam)) fh.father = { height: fatherParam, isBio: true };
+                if (!isNaN(motherParam)) fh.mother = { height: motherParam, isBio: true };
+
                 return {
                     demographics: processedData.demographics || {},
                     vitals: {
@@ -312,11 +324,8 @@ GC.get_data = function() {
                         BMIData:    v.BMIData    || [],
                         headCData:  v.headCData  || []
                     },
-                    boneAge: processedData.boneAge || [],
-                    familyHistory: processedData.familyHistory || {
-                        father: { height: null, isBio: false },
-                        mother: { height: null, isBio: false }
-                    }
+                    boneAge:       processedData.boneAge || [],
+                    familyHistory: fh
                 };
             })
             .catch(function(e) {
