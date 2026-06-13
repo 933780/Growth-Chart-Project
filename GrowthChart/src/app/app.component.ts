@@ -137,14 +137,16 @@ export class AppComponent {
   openChart(): void {
     if (!this.patient) return;
     this.isLoading = true;
-    const encoded  = encodeURIComponent(this.uhid.trim());
-    const encodedName = encodeURIComponent(this.patient.name.trim());
-    let url           = `${environment.chartUrl}/index.html?patientId=${encoded}&patientName=${encodedName}`;
 
-    if (this.fatherHeightCm) url += `&fatherHeight=${this.fatherHeightCm.toFixed(1)}`;
-    if (this.motherHeightCm) url += `&motherHeight=${this.motherHeightCm.toFixed(1)}`;
+    const payload: any = {
+      patientId:   this.uhid.trim(),
+      patientName: this.patient.name.trim()
+    };
+    if (this.fatherHeightCm) payload.fatherHeight = +this.fatherHeightCm.toFixed(1);
+    if (this.motherHeightCm) payload.motherHeight = +this.motherHeightCm.toFixed(1);
 
-    window.location.href = url;
+    const token = btoa(JSON.stringify(payload));
+    window.location.href = `${environment.chartUrl}/index.html?d=${encodeURIComponent(token)}`;
   }
 
   formatDob(iso: string): string {

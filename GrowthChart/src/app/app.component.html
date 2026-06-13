@@ -2,19 +2,19 @@
 
   <div class="form-header">
     <h1>Growth Chart</h1>
-    <p>Enter the Patient OPID to load the chart</p>
+    <p>Enter the Patient UHID to load the chart</p>
   </div>
 
-  <!-- OPID input -->
+  <!-- UHID input -->
   <div class="form-group">
-    <label for="uhidInput">OPID</label>
+    <label for="uhidInput">UHID</label>
     <input
       id="uhidInput"
       type="text"
       [(ngModel)]="uhid"
       (input)="onUhidInput()"
       (keyup.enter)="openChart()"
-      placeholder="e.g. OP1615352"
+      placeholder="e.g. ANM1.0000005645"
       maxlength="50"
       autocomplete="off"
     />

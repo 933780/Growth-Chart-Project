@@ -293,10 +293,17 @@ GC.get_data = function() {
     // API base URL — change this one line to point to any backend
     var API_BASE_URL = 'http://localhost:5000';
 
-    // PATH 1: .NET backend — patientId param → fetch processed data from API
-    var patientIdFromUrl = urlParams.get("patientId");
-    if (patientIdFromUrl) {
-        return fetch(API_BASE_URL + '/api/patients/' + encodeURIComponent(patientIdFromUrl) + '/data')
+    // PATH 1: .NET backend — base64-encoded payload → decode → fetch from API
+    var encodedToken = urlParams.get("d");
+    if (encodedToken) {
+        var payload;
+        try {
+            payload = JSON.parse(atob(encodedToken));
+        } catch(e) {
+            throw new Error("Invalid launch token.");
+        }
+
+        return fetch(API_BASE_URL + '/api/patients/' + encodeURIComponent(payload.patientId) + '/data')
             .then(function(res) {
                 if (!res.ok) throw new Error('HTTP ' + res.status + ': ' + res.statusText);
                 return res.json();
@@ -306,22 +313,16 @@ GC.get_data = function() {
                 var v = processedData.vitals || {};
 
                 // Use backend family history as base, then override with
-                // any heights the Angular form passed as URL params
+                // any heights the Angular form passed in the token
                 var fh = processedData.familyHistory || {
                     father: { height: null, isBio: false },
                     mother: { height: null, isBio: false }
                 };
-                var fatherParam = parseFloat(urlParams.get("fatherHeight"));
-                var motherParam = parseFloat(urlParams.get("motherHeight"));
-                if (!isNaN(fatherParam)) fh.father = { height: fatherParam, isBio: true };
-                if (!isNaN(motherParam)) fh.mother = { height: motherParam, isBio: true };
+                if (payload.fatherHeight) fh.father = { height: payload.fatherHeight, isBio: true };
+                if (payload.motherHeight) fh.mother = { height: payload.motherHeight, isBio: true };
 
-                // Override name with the one passed from Angular form (comes from DB procedure)
-                var nameParam = urlParams.get("patientName");
-                var demographics = processedData.demographics || {};
-                if (nameParam) {
-                    demographics = Object.assign({}, demographics, { name: decodeURIComponent(nameParam) });
-                }
+                var demographics = Object.assign({}, processedData.demographics || {});
+                if (payload.patientName) demographics.name = payload.patientName;
 
                 return {
                     demographics: demographics,
