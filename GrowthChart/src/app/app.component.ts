@@ -1,9 +1,10 @@
-﻿import { Component } from '@angular/core';
+﻿import { Component, ChangeDetectorRef } from '@angular/core';
 import { environment } from '../environments/environment';
 
 interface PatientSummary {
   opnumber: string;
-  dob:      string;   // ISO yyyy-MM-dd
+  name:     string;
+  dob:      string;
   gender:   string;
 }
 
@@ -22,31 +23,27 @@ export class AppComponent {
   isLooking     = false;
   isLoading     = false;
 
-  // Parental height fields
   heightUnit: 'cm' | 'ft' = 'cm';
 
-  // cm mode
   fatherCm: number | null = null;
   motherCm: number | null = null;
 
-  // ft/in mode
   fatherFt: number | null = null;
   fatherIn: number | null = null;
   motherFt: number | null = null;
   motherIn: number | null = null;
 
-  // Resolved cm values (always kept in sync)
   private fatherHeightCm: number | null = null;
   private motherHeightCm: number | null = null;
 
-  // MPH display
   mph:     number | null = null;
   mphLow:  number | null = null;
   mphHigh: number | null = null;
 
   private lookupTimer: any = null;
 
-  // Debounced input handler (500 ms)
+  constructor(private cdr: ChangeDetectorRef) {}
+
   onUhidInput(): void {
     this.patient       = null;
     this.lookupMessage = '';
@@ -57,11 +54,10 @@ export class AppComponent {
     clearTimeout(this.lookupTimer);
     if (!this.uhid.trim()) return;
 
-    this.isLooking   = true;
+    this.isLooking = true;
     this.lookupTimer = setTimeout(() => this.lookupUhid(), 500);
   }
 
-  // Fetch patient from backend
   lookupUhid(): void {
     const uhid = this.uhid.trim();
     if (!uhid) return;
@@ -77,10 +73,10 @@ export class AppComponent {
         if (res?.found) {
           this.patient = {
             opnumber: res.opnumber ?? '',
+            name:     res.name     ?? '',
             dob:      res.dob      ?? '',
             gender:   res.gender   ?? ''
           };
-          // Pre-fill parental heights if backend already has them stored
           if (res.fatherHeight) this.prefillFatherHeight(res.fatherHeight);
           if (res.motherHeight) this.prefillMotherHeight(res.motherHeight);
           this.lookupMessage = 'Patient found - press "Open Growth Chart" to continue.';
@@ -88,22 +84,22 @@ export class AppComponent {
           this.patient       = null;
           this.lookupMessage = 'No patient found for this OPID.';
         }
+
+        this.cdr.detectChanges();  // force Angular to re-render
       })
       .catch((err: Error) => {
         this.isLooking    = false;
         this.patient      = null;
         this.errorMessage = err.message ?? `Cannot reach API at ${environment.apiUrl}`;
-        console.error(err);
+        this.cdr.detectChanges();
       });
   }
 
-  // Unit toggle
   setHeightUnit(unit: 'cm' | 'ft'): void {
     if (this.heightUnit === unit) return;
     this.heightUnit = unit;
 
     if (unit === 'ft') {
-      // Convert stored cm -> ft/in for display
       if (this.fatherHeightCm) {
         [this.fatherFt, this.fatherIn] = this.cmToFtIn(this.fatherHeightCm);
       }
@@ -111,13 +107,11 @@ export class AppComponent {
         [this.motherFt, this.motherIn] = this.cmToFtIn(this.motherHeightCm);
       }
     } else {
-      // Convert stored ft/in -> cm for display
       if (this.fatherHeightCm) this.fatherCm = Math.round(this.fatherHeightCm);
       if (this.motherHeightCm) this.motherCm = Math.round(this.motherHeightCm);
     }
   }
 
-  // Called whenever any parent height input changes
   onParentHeightChange(): void {
     if (this.heightUnit === 'cm') {
       this.fatherHeightCm = this.fatherCm ?? null;
@@ -129,10 +123,6 @@ export class AppComponent {
     this.computeMph();
   }
 
-  // MPH calculation
-  // For boys:  MPH = (fatherCm + motherCm + 13) / 2
-  // For girls: MPH = (fatherCm + motherCm - 13) / 2
-  // Target range: MPH +/- 8.5 cm
   private computeMph(): void {
     if (!this.fatherHeightCm || !this.motherHeightCm || !this.patient) {
       this.mph = this.mphLow = this.mphHigh = null;
@@ -144,14 +134,12 @@ export class AppComponent {
     this.mphHigh = this.mph + 8.5;
   }
 
-  // Navigate to the growth chart
-  // Passes fatherHeight and motherHeight as query params so the chart JS
-  // can call _setParentHeight() with real values on load.
   openChart(): void {
     if (!this.patient) return;
-    this.isLoading    = true;
-    const encoded     = encodeURIComponent(this.uhid.trim());
-    let url           = `${environment.chartUrl}/index.html?patientId=${encoded}`;
+    this.isLoading = true;
+    const encoded  = encodeURIComponent(this.uhid.trim());
+    const encodedName = encodeURIComponent(this.patient.name.trim());
+    let url           = `${environment.chartUrl}/index.html?patientId=${encoded}&patientName=${encodedName}`;
 
     if (this.fatherHeightCm) url += `&fatherHeight=${this.fatherHeightCm.toFixed(1)}`;
     if (this.motherHeightCm) url += `&motherHeight=${this.motherHeightCm.toFixed(1)}`;
@@ -159,14 +147,12 @@ export class AppComponent {
     window.location.href = url;
   }
 
-  // Display helper: ISO yyyy-MM-dd -> DD/MM/YYYY
   formatDob(iso: string): string {
     if (!iso || iso.length !== 10) return iso ?? '-';
     const [y, m, d] = iso.split('-');
     return `${d}/${m}/${y}`;
   }
 
-  // Unit conversion helpers
   private cmToFtIn(cm: number): [number, number] {
     const totalInches = cm / 2.54;
     const ft          = Math.floor(totalInches / 12);
@@ -179,7 +165,6 @@ export class AppComponent {
     return ((ft ?? 0) * 12 + (inches ?? 0)) * 2.54;
   }
 
-  // Pre-fill helpers (called when backend returns stored heights)
   private prefillFatherHeight(cm: number): void {
     this.fatherHeightCm = cm;
     if (this.heightUnit === 'cm') {

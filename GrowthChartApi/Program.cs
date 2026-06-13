@@ -102,6 +102,7 @@ static async Task<ProcessedPatientData?> FetchFromDb(NpgsqlConnection conn, stri
         string   gender       = "male";
         bool     hasRow       = false;
         string   patientOpNum = "";
+        string   patientName  = "";
         double?  fatherHeight = null;
         double?  motherHeight = null;
 
@@ -115,7 +116,8 @@ static async Task<ProcessedPatientData?> FetchFromDb(NpgsqlConnection conn, stri
             if (!hasRow)
             {
                 hasRow       = true;
-                patientOpNum = SafeString(reader, "opnumber") ?? "";
+                patientOpNum = SafeString(reader, "opnumber")      ?? "";
+                patientName  = SafeString(reader, "patient_name")  ?? "";
                 birth        = SafeDate(reader, "dob");
 
                 var raw = (SafeString(reader, "gender") ?? "").Trim().ToLower();
@@ -165,7 +167,7 @@ static async Task<ProcessedPatientData?> FetchFromDb(NpgsqlConnection conn, stri
         {
             Demographics = new Dictionary<string, object>
             {
-                { "name",     patientOpNum.Trim() },
+                { "name",     patientName.Trim() },
                 { "opnumber", patientOpNum },
                 { "birthday", birth == default ? "" : birth.ToString("yyyy-MM-dd") },
                 { "gender",   gender }
@@ -263,7 +265,7 @@ app.MapGet("/api/patients/search", async (string? opnumber) =>
         {
             found    = true,
             opnumber,
-            uhid     = data.Demographics["name"],
+            name     = data.Demographics["name"],
             dob      = data.Demographics["birthday"],
             gender   = data.Demographics["gender"]
         });

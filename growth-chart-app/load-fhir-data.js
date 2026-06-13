@@ -316,8 +316,15 @@ GC.get_data = function() {
                 if (!isNaN(fatherParam)) fh.father = { height: fatherParam, isBio: true };
                 if (!isNaN(motherParam)) fh.mother = { height: motherParam, isBio: true };
 
+                // Override name with the one passed from Angular form (comes from DB procedure)
+                var nameParam = urlParams.get("patientName");
+                var demographics = processedData.demographics || {};
+                if (nameParam) {
+                    demographics = Object.assign({}, demographics, { name: decodeURIComponent(nameParam) });
+                }
+
                 return {
-                    demographics: processedData.demographics || {},
+                    demographics: demographics,
                     vitals: {
                         lengthData: v.lengthData || [],
                         weightData: v.weightData || [],
