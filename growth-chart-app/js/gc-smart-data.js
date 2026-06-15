@@ -275,10 +275,12 @@ window.GC = window.GC || {};
 
         function setData(i, o) {
             patient.data[name].push ({
-                agemos: o.hasOwnProperty("agemos") ?
+                agemos   : o.hasOwnProperty("agemos") ?
                     o.agemos :
                     patient.DOB.diffMonths(new XDate(o.date)),
-                value : o.value
+                value    : o.value,
+                source   : o.source   || null,
+                visitRef : o.visitRef || null
             });
         }
 
@@ -473,8 +475,14 @@ window.GC = window.GC || {};
             $.each(this.data.lengthAndStature, function(i, o) {
                 if ( model.hasOwnProperty(o.agemos) ) {
                     model[ o.agemos ].lengthAndStature = o.value;
+                    if ( o.source   ) { model[ o.agemos ].source   = o.source;   }
+                    if ( o.visitRef ) { model[ o.agemos ].visitRef = o.visitRef; }
                 } else {
-                    model[ o.agemos ] = { "lengthAndStature" : o.value };
+                    model[ o.agemos ] = {
+                        "lengthAndStature" : o.value,
+                        "source"           : o.source   || null,
+                        "visitRef"         : o.visitRef || null
+                    };
                 }
             });
 
@@ -482,8 +490,14 @@ window.GC = window.GC || {};
             $.each(this.data.weight, function(i, o) {
                 if ( model.hasOwnProperty(o.agemos) ) {
                     model[ o.agemos ].weight = o.value;
+                    if ( o.source   ) { model[ o.agemos ].source   = o.source;   }
+                    if ( o.visitRef ) { model[ o.agemos ].visitRef = o.visitRef; }
                 } else {
-                    model[ o.agemos ] = { "weight" : o.value };
+                    model[ o.agemos ] = {
+                        "weight"   : o.value,
+                        "source"   : o.source   || null,
+                        "visitRef" : o.visitRef || null
+                    };
                 }
             });
 
@@ -491,8 +505,14 @@ window.GC = window.GC || {};
             $.each(this.data.headc, function(i, o) {
                 if ( model.hasOwnProperty(o.agemos) ) {
                     model[ o.agemos ].headc = o.value;
+                    if ( o.source   ) { model[ o.agemos ].source   = o.source;   }
+                    if ( o.visitRef ) { model[ o.agemos ].visitRef = o.visitRef; }
                 } else {
-                    model[ o.agemos ] = { "headc" : o.value };
+                    model[ o.agemos ] = {
+                        "headc"    : o.value,
+                        "source"   : o.source   || null,
+                        "visitRef" : o.visitRef || null
+                    };
                 }
             });
 
@@ -500,8 +520,14 @@ window.GC = window.GC || {};
             $.each(this.data.bmi, function(i, o) {
                 if ( model.hasOwnProperty(o.agemos) ) {
                     model[ o.agemos ].bmi = o.value;
+                    if ( o.source   ) { model[ o.agemos ].source   = o.source;   }
+                    if ( o.visitRef ) { model[ o.agemos ].visitRef = o.visitRef; }
                 } else {
-                    model[ o.agemos ] = { "bmi" : o.value };
+                    model[ o.agemos ] = {
+                        "bmi"      : o.value,
+                        "source"   : o.source   || null,
+                        "visitRef" : o.visitRef || null
+                    };
                 }
             });
 
@@ -567,35 +593,45 @@ window.GC = window.GC || {};
             if (o.hasOwnProperty("lengthAndStature")) {
                 if (o.agemos <= 24) {
                     merge(patient.data.length, {
-                        agemos : o.agemos,
-                        value  : o.lengthAndStature
+                        agemos   : o.agemos,
+                        value    : o.lengthAndStature,
+                        source   : o.source   || null,
+                        visitRef : o.visitRef || null
                     });
                 } else {
                     merge(patient.data.stature, {
-                        agemos : o.agemos,
-                        value  : o.lengthAndStature
+                        agemos   : o.agemos,
+                        value    : o.lengthAndStature,
+                        source   : o.source   || null,
+                        visitRef : o.visitRef || null
                     });
                 }
             }
 
             if (o.hasOwnProperty("weight")) {
                 merge(patient.data.weight, {
-                    agemos : o.agemos,
-                    value  : o.weight
+                    agemos   : o.agemos,
+                    value    : o.weight,
+                    source   : o.source   || null,
+                    visitRef : o.visitRef || null
                 });
             }
 
             if (o.hasOwnProperty("headc")) {
                 merge(patient.data.headc, {
-                    agemos : o.agemos,
-                    value  : o.headc
+                    agemos   : o.agemos,
+                    value    : o.headc,
+                    source   : o.source   || null,
+                    visitRef : o.visitRef || null
                 });
             }
 
             if (o.hasOwnProperty("bmi")) {
                 merge(patient.data.bmi, {
-                    agemos : o.agemos,
-                    value  : o.bmi
+                    agemos   : o.agemos,
+                    value    : o.bmi,
+                    source   : o.source   || null,
+                    visitRef : o.visitRef || null
                 });
             }
 

@@ -82,7 +82,7 @@ export class AppComponent {
           this.lookupMessage = 'Patient found - press "Open Growth Chart" to continue.';
         } else {
           this.patient       = null;
-          this.lookupMessage = 'No patient found for this OPID.';
+          this.lookupMessage = 'No patient found for this UHID.';
         }
 
         this.cdr.detectChanges();  // force Angular to re-render

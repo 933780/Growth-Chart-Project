@@ -295,6 +295,8 @@
                     data : {
                         value     : o.value,
                         agemos    : o.agemos,
+                        source    : o.source   || null,
+                        visitRef  : o.visitRef || null,
                         pct       : pct,
                         z         : z,
                         color     : data[type].color,
@@ -564,6 +566,7 @@
                         paddingX : 6,
                         color    : GC.Util.readableColor( pts[i].data.color, 0.95, 0.95 ),
                         text     : GC.Util.strPad( pts[i].data.shortName, 3, " " ),
+                        agemos   : pts[i].data.agemos,
                         shiftY   : -30,
                         shadowOffsetX : -15,
                         shadowOffsetY : 5,

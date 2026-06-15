@@ -1693,6 +1693,90 @@
         QUEUE.start();
     });
 
+    // =========================================================================
+    // Wrap GC.tooltip so ALL main chart value bubbles include the source ID
+    // as a second line inside the bubble — e.g.:
+    //
+    //   ┌──────────────────┐
+    //   │  141cm     89%   │
+    //   │  OP: OP1837      │   ← source appended here, inside the bubble
+    //   └──────────────────┘
+    //
+    // Approach:
+    //   1. If cfg already carries .source and .visitRef (WFL chart passes these
+    //      directly), use them immediately — no lookup needed.
+    //   2. Otherwise if cfg.agemos is set, search all patient data arrays for
+    //      an entry at that age and pull source/visitRef from it.
+    //   3. Height-estimate tooltips (cfg.shiftY == -70) are skipped — they are
+    //      population estimates, not individual visit readings.
+    // =========================================================================
+    $(function patchGCTooltip() {
+
+        function doWrap() {
+            if (typeof GC === "undefined" || typeof GC.tooltip !== "function") {
+                setTimeout(doWrap, 100);
+                return;
+            }
+
+            var _originalTooltip = GC.tooltip;
+
+            GC.tooltip = function(paper, cfg) {
+
+                // Skip the height-estimate tooltips (mid-parental, bone-age etc.)
+                if (cfg && cfg.shiftY === -70) {
+                    return _originalTooltip.call(this, paper, cfg);
+                }
+
+                var sourceLabel = null;
+
+                if (cfg) {
+                    // Case 1: WFL chart passes source/visitRef directly on cfg
+                    if (cfg.source && cfg.visitRef) {
+                        sourceLabel = cfg.source + ": " + cfg.visitRef;
+                    }
+                    // Case 2: other charts — look up by agemos in patient data arrays
+                    else if (cfg.agemos !== undefined && PATIENT) {
+                        var agemos   = cfg.agemos,
+                            dataArrs = [
+                                PATIENT.data.lengthAndStature,
+                                PATIENT.data.weight,
+                                PATIENT.data.headc,
+                                PATIENT.data.bmi
+                            ],
+                            matchEntry = null;
+
+                        $.each(dataArrs, function(i, arr) {
+                            if (!arr) { return true; }
+                            $.each(arr, function(j, o) {
+                                if (Math.abs(o.agemos - agemos) < 0.1) {
+                                    if (!matchEntry ||
+                                        Math.abs(o.agemos - agemos) < Math.abs(matchEntry.agemos - agemos)) {
+                                        matchEntry = o;
+                                    }
+                                }
+                            });
+                        });
+
+                        if (matchEntry && matchEntry.source && matchEntry.visitRef) {
+                            sourceLabel = matchEntry.source + ": " + matchEntry.visitRef;
+                        }
+                    }
+                }
+
+                if (sourceLabel) {
+                    cfg = $.extend({}, cfg);
+                    cfg.text = (cfg.text || "") + "\n" + sourceLabel;
+                }
+
+                return _originalTooltip.call(this, paper, cfg);
+            };
+
+            GC.tooltip.prototype = _originalTooltip.prototype;
+        }
+
+        doWrap();
+    });
+
     return NS;
 
 }(GC, jQuery));

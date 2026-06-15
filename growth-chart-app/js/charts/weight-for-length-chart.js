@@ -123,7 +123,13 @@
                         var wv = isEng ? kgToLb(wEntry.value) : wEntry.value;
                         // Keep agemos as months (for patient model lookups) and
                         // add `length` for horizontal placement on WFL charts.
-                        pts.push({ agemos: wEntry.agemos, value: wv, length: lv });
+                        pts.push({
+                            agemos   : wEntry.agemos,
+                            value    : wv,
+                            length   : lv,
+                            source   : wEntry.source   || null,
+                            visitRef : wEntry.visitRef || null
+                        });
                         return false; // break inner loop
                     }
                 });
@@ -243,6 +249,12 @@
                                 if (lengthLabel && lengthLabel !== "N/A") {
                                     mainText = mainText + " • " + lengthLabel;
                                 }
+
+                                // Append source ID if available on this data point
+                                if (pt.source && pt.visitRef) {
+                                    mainText = mainText + "\n" + pt.source + ": " + pt.visitRef;
+                                }
+
                                 tt = GC.tooltip(inst.pane.paper, {
                                     x: px,
                                     y: py,
@@ -425,7 +437,13 @@
                     if (Math.abs(wEntry.agemos - lEntry.agemos) <= 0.25) {
                         var lv = isEng ? cmToIn(lEntry.value) : lEntry.value;
                         var wv = isEng ? kgToLb(wEntry.value) : wEntry.value;
-                        points.push({ x: lv, y: wv, agemos: wEntry.agemos });
+                        points.push({
+                            x        : lv,
+                            y        : wv,
+                            agemos   : wEntry.agemos,
+                            source   : wEntry.source   || null,
+                            visitRef : wEntry.visitRef || null
+                        });
                         return false; // break inner $.each
                     }
                 });

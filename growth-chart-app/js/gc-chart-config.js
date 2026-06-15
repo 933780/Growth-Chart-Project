@@ -66,7 +66,7 @@ window.GC = window.GC || {};
         hideAddData: false,
         defaultChart : "IAP", // 5+ years
         defaultBabyChart : "WHO", // 0 - 5 years
-        defaultPrematureChart : "WHO", // premature
+        defaultPrematureChart : "FENTON", // premature (FENTON or OLSEN)
 
         widthType  : "auto",// or "fixed"
         paperWidth : 1200,

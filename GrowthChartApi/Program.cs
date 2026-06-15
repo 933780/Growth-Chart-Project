@@ -137,24 +137,30 @@ static async Task<ProcessedPatientData?> FetchFromDb(NpgsqlConnection conn, stri
             var hc = SafeDouble(reader, "head_circumm");
             var bm = SafeDouble(reader, "bmi");
 
+            // Source info from the procedure (OP / IP / AHC) + the visit reference number
+            var source   = SafeString(reader, "source")    ?? "";
+            var visitRef = SafeString(reader, "visit_ref") ?? "";
+
             // Read parent heights inside loop while reader is open
             fatherHeight = SafeDouble(reader, "father_height");
             motherHeight = SafeDouble(reader, "mother_height");
 
             if (wt.HasValue)
-                weightData.Add(new VitalReading { Agemos = agemos, Value = wt.Value });
+                weightData.Add(new VitalReading { Agemos = agemos, Value = wt.Value, Source = source, VisitRef = visitRef });
             if (ht.HasValue)
-                lengthData.Add(new VitalReading { Agemos = agemos, Value = ht.Value });
+                lengthData.Add(new VitalReading { Agemos = agemos, Value = ht.Value, Source = source, VisitRef = visitRef });
             if (hc.HasValue)
-                headCData.Add(new VitalReading { Agemos = agemos, Value = hc.Value });
+                headCData.Add(new VitalReading  { Agemos = agemos, Value = hc.Value, Source = source, VisitRef = visitRef });
 
             if (bm.HasValue)
-                bmiData.Add(new VitalReading { Agemos = agemos, Value = bm.Value });
+                bmiData.Add(new VitalReading { Agemos = agemos, Value = bm.Value, Source = source, VisitRef = visitRef });
             else if (wt.HasValue && ht.HasValue && ht.Value > 0)
                 bmiData.Add(new VitalReading
                 {
-                    Agemos = agemos,
-                    Value  = Math.Round(wt.Value / Math.Pow(ht.Value / 100.0, 2), 1)
+                    Agemos   = agemos,
+                    Value    = Math.Round(wt.Value / Math.Pow(ht.Value / 100.0, 2), 1),
+                    Source   = source,
+                    VisitRef = visitRef
                 });
         }
 
@@ -404,8 +410,10 @@ public class ProcessedPatientData
 
 public class VitalReading
 {
-    public double Agemos { get; set; }
-    public double Value  { get; set; }
+    public double  Agemos   { get; set; }
+    public double  Value    { get; set; }
+    public string? Source   { get; set; }   // "OP" | "IP" | "AHC"
+    public string? VisitRef { get; set; }   // opnumber / inpatientno / ahcno
 }
 
 public class ParentData

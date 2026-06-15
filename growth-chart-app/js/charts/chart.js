@@ -1017,6 +1017,7 @@ Chart.prototype = {
                     GC.tooltip(this.pane.paper, {
                         x      : pts[i].x,
                         y      : pts[i].y,
+                        agemos : pts[i].data.agemos,
                         shiftY : 30,
                         shadowOffsetX : -15,
                         shadowOffsetY : 5,
