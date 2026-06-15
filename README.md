@@ -10,8 +10,8 @@ This is a monorepo containing three interconnected projects:
 
 ## Prerequisites
 
-- [.NET 8 SDK](https://dotnet.microsoft.com/download)
-- [Node.js](https://nodejs.org/) (v18+)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download)
+- [Node.js](https://nodejs.org/) (v21+)
 - PostgreSQL database access
 
 ---
