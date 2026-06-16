@@ -1,0 +1,15 @@
+@baseUrl = http://localhost:5000
+
+GET {{baseUrl}}/api/health
+
+###
+
+GET {{baseUrl}}/api/patients/search?opnumber=ANM1.0000005645
+
+###
+
+GET {{baseUrl}}/api/patients/ANM1.0000005645/data
+
+###
+
+GET {{baseUrl}}/api/debug/ANM1.0000005645
