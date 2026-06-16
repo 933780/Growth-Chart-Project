@@ -91,6 +91,21 @@
         $('[name=pctz]').val(e.data.newValue).trigger("change");
     });
 
+    // Highlight the time-range tab whose start/end values match START_WEEK/END_WEEK
+    // within a small tolerance, to avoid floating-point string-comparison mismatches.
+    function updateTimeRangeTabs() {
+        var EPS = 0.001;
+        $('input:radio[name="time-range"]').each(function() {
+            var parts = this.value.split(":");
+            var tabStart = GC.Util.floatVal(parts[0]);
+            var tabEnd   = GC.Util.floatVal(parts[1]);
+            var match = Math.abs(tabStart - START_WEEK) < EPS &&
+                        Math.abs(tabEnd   - END_WEEK)   < EPS;
+            this.checked = match;
+            $(this).closest("label").toggleClass("active", match);
+        });
+    }
+
     // START_WEEK --------------------------------------------------------------
     function getStartWeek() {
         return START_WEEK;
@@ -102,11 +117,7 @@
         END_AGE_MOS = null;
         getStartAgeMos();
         getEndAgeMos();
-        var range = START_WEEK + ":" + END_WEEK;
-        $('input:radio[name="time-range"]').each(function() {
-            this.checked = this.value == range;
-            $(this).closest("label").toggleClass("active", this.checked);
-        });
+        updateTimeRangeTabs();
 
         if (!silent) {
             BROADCASTER.trigger("set:weeks", [START_WEEK, END_WEEK]);
@@ -125,11 +136,7 @@
         END_AGE_MOS = null;
         getStartAgeMos();
         getEndAgeMos();
-        var range = START_WEEK + ":" + END_WEEK;
-        $('input:radio[name="time-range"]').each(function() {
-            this.checked = this.value == range;
-            $(this).closest("label").toggleClass("active", this.checked);
-        });
+        updateTimeRangeTabs();
 
         if (!silent) {
             BROADCASTER.trigger("set:weeks", [START_WEEK, END_WEEK]);
@@ -1140,11 +1147,18 @@
                         }
                     }, 0);
                 } else if (isIAPWHO) {
-                    // Combined: default to 0-5yr so both segments are visible initially
+                    // Pick the tab that fits the patient's age:
+                    // - 0-5yr  if patient is under 5 (or no data)
+                    // - 5-18yr if patient is 5 or older
                     setTimeout(function() {
-                        var combinedTab = $('input[name="time-range"][value="0:260.892857143"]');
-                        if (!combinedTab.is(":checked")) {
-                            combinedTab.prop("checked", true).trigger("change");
+                        var lastEntry = PATIENT.getLastModelEntry();
+                        var ageMos = lastEntry ? lastEntry.agemos : 0;
+                        var targetVal = ageMos >= 60
+                            ? "260.892857143:939.214285714"   // 5-18yr
+                            : "0:260.892857143";              // 0-5yr
+                        var targetTab = $('input[name="time-range"][value="' + targetVal + '"]');
+                        if (!targetTab.is(":checked")) {
+                            targetTab.prop("checked", true).trigger("change");
                         }
                     }, 0);
                 } else if (isWHOOnly) {
@@ -1154,6 +1168,18 @@
                         $('input[name="time-range"][value="0:26.08928571428572"]')
                             .prop("checked", true).trigger("change");
                     }
+                } else {
+                    // CDC, Fenton, Olsen etc. — pick the tab that contains the patient's age
+                    setTimeout(function() {
+                        var lastEntry = PATIENT.getLastModelEntry();
+                        if (lastEntry) {
+                            GC.App.selectRangeForAge(lastEntry.agemos * GC.Constants.TIME.MONTH);
+                        } else {
+                            // No patient data: default to 0-20yr
+                            $('input[name="time-range"][value="0:1043.571428571429"]')
+                                .prop("checked", true).trigger("change");
+                        }
+                    }, 0);
                 }
                 // ─────────────────────────────────────────────────────────────────────────
             }
