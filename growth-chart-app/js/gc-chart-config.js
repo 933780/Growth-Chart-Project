@@ -50,8 +50,7 @@ window.GC = window.GC || {};
         mouseTrackingEnabled : false,
 
         // set to true to enable the editing of the parents in the header
-        patientFamilyHistoryEditable : false,
-        patientDataEditable : false
+        patientFamilyHistoryEditable : false
     };
 
     // =========================================================================
@@ -64,6 +63,7 @@ window.GC = window.GC || {};
         hideAppPreferences: false,
         hideGCComparison: true,
         hideAddData: false,
+        patientDataEditable : true,
         defaultChart : "IAP", // 5+ years
         defaultBabyChart : "WHO", // 0 - 5 years
         defaultPrematureChart : "FENTON", // premature (FENTON or OLSEN)

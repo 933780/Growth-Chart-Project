@@ -328,8 +328,9 @@
     }
 
     function togglePatientEditable(bEditable) {
-        $('[name="DOB"]').datepicker( bEditable ? "enable" : "disable");
-        $('[name="EDD"]').datepicker( bEditable ? "enable" : "disable");
+        // DOB is intentionally kept disabled regardless of edit mode
+        $('[name="DOB"]').datepicker("disable");
+        $('[name="EDD"]').datepicker("enable");
         $(".add-entry").toggleClass("ui-state-disabled", !bEditable);
     }
 
@@ -1170,16 +1171,16 @@
                     }
                 } else {
                     // CDC, Fenton, Olsen etc. — pick the tab that contains the patient's age
-                    setTimeout(function() {
-                        var lastEntry = PATIENT.getLastModelEntry();
-                        if (lastEntry) {
-                            GC.App.selectRangeForAge(lastEntry.agemos * GC.Constants.TIME.MONTH);
-                        } else {
-                            // No patient data: default to 0-20yr
-                            $('input[name="time-range"][value="0:1043.571428571429"]')
-                                .prop("checked", true).trigger("change");
-                        }
-                    }, 0);
+                        setTimeout(function() {
+                            var lastEntry = PATIENT.getLastModelEntry();
+                            if (lastEntry) {
+                                GC.App.selectRangeForAge(lastEntry.agemos * GC.Constants.TIME.MONTH);
+                            } else {
+                                // No patient data: default to 0-20yr
+                                $('input[name="time-range"][value="0:1043.571428571429"]')
+                                    .prop("checked", true).trigger("change");
+                            }
+                        }, 0);
                 }
                 // ─────────────────────────────────────────────────────────────────────────
             }
@@ -1424,10 +1425,11 @@
 
             // EDD -------------------------------------------------------------
             $('[name="EDD"]').val(PATIENT.EDD ? PATIENT.EDD.toString(GC.chartSettings.dateFormat) : "").datepicker({
-                dateFormat : GC.Util.cDateFormatToJqFormat(GC.chartSettings.dateFormat)
+                dateFormat : GC.Util.cDateFormatToJqFormat(GC.chartSettings.dateFormat),
+                disabled   : false
             }).change(function() {
                 PATIENT.setEDD($(this).datepicker("getDate"));
-            });
+            }).datepicker("enable");
 
             // Update the date format on the date pickecrs in case that pref.
             // has been changed
